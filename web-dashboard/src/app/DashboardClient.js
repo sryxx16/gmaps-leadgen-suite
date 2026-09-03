@@ -215,7 +215,7 @@ export default function DashboardClient({ initialLeads, categories }) {
                 <tr key={lead.id} className="hover:bg-slate-800/20 transition-colors">
                   <td className="p-4 text-sm font-semibold text-slate-200">{lead.name}</td>
                   <td className="p-4">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700 whitespace-nowrap">
                       {lead.categoryName || 'Tanpa Kategori'}
                     </span>
                   </td>
