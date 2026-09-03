@@ -13,8 +13,8 @@ export const metadata = {
   description: 'Kelola data prospek klien dengan mudah',
 };
 
-export default function RootLayout({ children }) {
-  const cookieStore = cookies();
+export default async function RootLayout({ children }) {
+  const cookieStore = await cookies();
   const isAuthenticated = cookieStore.has('auth');
 
   return (
