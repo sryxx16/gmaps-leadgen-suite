@@ -16,15 +16,8 @@ export default function LogoutButton() {
   return (
     <button 
       onClick={handleLogout} 
-      style={{
-        background: 'transparent',
-        border: '1px solid rgba(239, 68, 68, 0.5)',
-        color: '#fca5a5',
-        padding: '0.4rem 1rem',
-        borderRadius: '6px',
-        cursor: 'pointer',
-        fontSize: '0.875rem'
-      }}
+      className="btn btn-danger"
+      style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}
     >
       Keluar
     </button>
