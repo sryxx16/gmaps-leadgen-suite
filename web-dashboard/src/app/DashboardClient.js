@@ -219,8 +219,16 @@ export default function DashboardClient({ initialLeads, categories }) {
                       {lead.categoryName || 'Tanpa Kategori'}
                     </span>
                   </td>
-                  <td className="p-4 text-sm text-slate-400 max-w-xs truncate" title={lead.address}>
-                    {lead.address || '-'}
+                  <td className="p-4 text-sm text-slate-400 max-w-xs" title={lead.address}>
+                    <div className="truncate">{lead.address || '-'}</div>
+                    <a 
+                      href={lead.mapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((lead.name + ' ' + (lead.address || '')).trim())}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="inline-flex mt-1 text-[11px] text-emerald-400 hover:text-emerald-300 hover:underline transition-colors font-medium items-center gap-1"
+                    >
+                      Buka Maps ↗
+                    </a>
                   </td>
                   <td className="p-4 text-sm">
                     {lead.phone ? (
