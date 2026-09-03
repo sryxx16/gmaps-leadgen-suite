@@ -11,15 +11,10 @@ export async function POST() {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const supabase = await openDb();
+    const sql = await openDb();
     
     // Hapus semua data dari tabel Lead
-    const { error } = await supabase
-      .from('Lead')
-      .delete()
-      .neq('id', 0); // Trik Supabase untuk delete all
-      
-    if (error) throw error;
+    await sql`DELETE FROM "Lead"`;
     
     return NextResponse.json({ success: true });
   } catch (error) {

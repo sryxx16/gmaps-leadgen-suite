@@ -4,76 +4,52 @@ import { openDb } from '@/lib/db';
 export async function POST(request) {
   try {
     const { data, categoryName } = await request.json();
-    const supabase = await openDb();
+    const sql = await openDb();
 
     // 1. Dapatkan atau buat kategori jika diisi manual
     let manualCatId = null;
     if (categoryName) {
-      let { data: catData } = await supabase
-        .from('Category')
-        .select('id')
-        .eq('name', categoryName)
-        .maybeSingle();
+      let cat = await sql`SELECT id FROM "Category" WHERE name = ${categoryName}`;
         
-      if (!catData) {
-        const { data: newCat, error: insertError } = await supabase
-          .from('Category')
-          .insert([{ name: categoryName }])
-          .select()
-          .single();
-          
-        if (insertError) throw insertError;
-        manualCatId = newCat.id;
+      if (cat.length === 0) {
+        const result = await sql`INSERT INTO "Category" (name) VALUES (${categoryName}) RETURNING id`;
+        manualCatId = result[0].id;
       } else {
-        manualCatId = catData.id;
+        manualCatId = cat[0].id;
       }
     }
 
-    // 2. Insert leads (secara bulk)
+    // 2. Insert leads
     let insertedCount = 0;
-    const leadsToInsert = [];
     
     for (const lead of data) {
       const finalCategoryName = categoryName || lead.category;
       let finalCatId = manualCatId;
       
       if (!categoryName && finalCategoryName) {
-         let { data: cData } = await supabase
-           .from('Category')
-           .select('id')
-           .eq('name', finalCategoryName)
-           .maybeSingle();
+         let c = await sql`SELECT id FROM "Category" WHERE name = ${finalCategoryName}`;
            
-         if (!cData) {
-           const { data: newCat } = await supabase
-             .from('Category')
-             .insert([{ name: finalCategoryName }])
-             .select()
-             .single();
-           finalCatId = newCat?.id;
+         if (c.length === 0) {
+           const res = await sql`INSERT INTO "Category" (name) VALUES (${finalCategoryName}) RETURNING id`;
+           finalCatId = res[0].id;
          } else {
-           finalCatId = cData.id;
+           finalCatId = c[0].id;
          }
       }
 
-      leadsToInsert.push({
-        name: lead.name,
-        address: lead.address || '',
-        phone: lead.phone || '',
-        website: lead.website || '',
-        mapsUrl: lead.mapsUrl || '',
-        scrapedAt: lead.scrapedAt || new Date().toISOString(),
-        categoryId: finalCatId
-      });
-    }
-
-    if (leadsToInsert.length > 0) {
-      const { error: insertLeadsError } = await supabase
-        .from('Lead')
-        .insert(leadsToInsert);
-        
-      if (insertLeadsError) throw insertLeadsError;
-      insertedCount = leadsToInsert.length;
+      await sql`
+        INSERT INTO "Lead" (name, address, phone, website, "mapsUrl", "scrapedAt", "categoryId")
+        VALUES (
+          ${lead.name}, 
+          ${lead.address || ''}, 
+          ${lead.phone || ''}, 
+          ${lead.website || ''}, 
+          ${lead.mapsUrl || ''}, 
+          ${lead.scrapedAt || new Date().toISOString()}, 
+          ${finalCatId}
+        )
+      `;
+      insertedCount++;
     }
 
     return NextResponse.json({ success: true, inserted: insertedCount });

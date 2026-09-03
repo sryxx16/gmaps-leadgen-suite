@@ -1,13 +1,9 @@
-import { createClient } from '@supabase/supabase-js';
+import { neon } from '@neondatabase/serverless';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder';
-
-let supabase = null;
+// Ambil URL database dari Vercel Environment Variables
+const url = process.env.DATABASE_URL || 'postgres://user:pass@ep-fake.us-east-2.aws.neon.tech/dbname';
+const sql = neon(url);
 
 export async function openDb() {
-  if (!supabase) {
-    supabase = createClient(supabaseUrl, supabaseKey);
-  }
-  return supabase;
+  return sql;
 }

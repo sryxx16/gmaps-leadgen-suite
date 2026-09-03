@@ -17,18 +17,12 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'ID tidak valid' }, { status: 400 });
     }
 
-    const supabase = await openDb();
-    const { data, error } = await supabase
-      .from('Lead')
-      .delete()
-      .eq('id', id)
-      .select();
+    const sql = await openDb();
+    
+    // Hapus data dan cek apakah ada baris yang terhapus menggunakan RETURNING
+    const result = await sql`DELETE FROM "Lead" WHERE id = ${id} RETURNING id`;
 
-    if (error) {
-      throw error;
-    }
-
-    if (data && data.length > 0) {
+    if (result.length > 0) {
       return NextResponse.json({ success: true });
     } else {
       return NextResponse.json({ success: false, error: 'Data tidak ditemukan.' }, { status: 404 });
