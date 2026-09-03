@@ -8,8 +8,8 @@ export const metadata = {
   description: 'Dashboard untuk mengelola data prospek Google Maps',
 };
 
-export default function RootLayout({ children }) {
-  const cookieStore = cookies();
+export default async function RootLayout({ children }) {
+  const cookieStore = await cookies();
   const isAuthenticated = cookieStore.has('auth');
 
   return (
