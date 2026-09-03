@@ -5,23 +5,18 @@ import { useState, useMemo } from 'react';
 export default function DashboardClient({ initialLeads, categories }) {
   const [leads, setLeads] = useState(initialLeads);
   
-  // States untuk filter & search
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ALL'); // ALL, NO_WEB, HAS_WEB
-  const [categoryFilter, setCategoryFilter] = useState('ALL'); // ALL atau categoryName
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [categoryFilter, setCategoryFilter] = useState('ALL');
 
-  // Derived state: hasil filter
   const filteredLeads = useMemo(() => {
     return leads.filter(lead => {
-      // 1. Filter Status Website
       if (statusFilter === 'NO_WEB' && lead.website) return false;
       if (statusFilter === 'HAS_WEB' && !lead.website) return false;
 
-      // 2. Filter Kategori
       const leadCat = lead.categoryName || 'Tanpa Kategori';
       if (categoryFilter !== 'ALL' && leadCat !== categoryFilter) return false;
 
-      // 3. Search Bar
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         const matchName = lead.name?.toLowerCase().includes(query);
@@ -33,7 +28,6 @@ export default function DashboardClient({ initialLeads, categories }) {
     });
   }, [leads, searchQuery, statusFilter, categoryFilter]);
 
-  // Handler Hapus Data
   const handleDelete = async (id, name) => {
     if (!confirm(`Yakin mau menghapus data bisnis "${name}"?`)) return;
 
@@ -54,7 +48,6 @@ export default function DashboardClient({ initialLeads, categories }) {
     }
   };
 
-  // Handler Hapus Semua Data
   const handleDeleteAll = async () => {
     if (!confirm('PERINGATAN: Yakin mau menghapus SEMUA data leads di sistem? Ini tidak bisa dikembalikan.')) return;
 
@@ -71,7 +64,6 @@ export default function DashboardClient({ initialLeads, categories }) {
     }
   };
 
-  // Handler Export CSV
   const handleExportCsv = () => {
     if (filteredLeads.length === 0) {
       alert('Tidak ada data untuk diexport.');
@@ -104,76 +96,95 @@ export default function DashboardClient({ initialLeads, categories }) {
     document.body.removeChild(link);
   };
 
-  // List unik untuk chip kategori (dari data leads yang ada)
   const availableCategories = useMemo(() => {
     const cats = new Set(leads.map(l => l.categoryName || 'Tanpa Kategori'));
     return Array.from(cats).sort();
   }, [leads]);
 
-  // Statistik Dinamis berdasarkan filter
   const totalLeads = filteredLeads.length;
   const noWebsite = filteredLeads.filter(l => !l.website).length;
 
   return (
-    <div>
+    <div className="max-w-7xl mx-auto px-4 pb-12 space-y-8">
       {/* 1. Baris Statistik */}
-      <div className="dashboard-grid">
-        <div className="stat-card glass">
-          <h3>Total Leads Terfilter</h3>
-          <p className="value">{totalLeads}</p>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
+          <h3 className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Total Leads Terfilter</h3>
+          <p className="text-4xl font-bold text-slate-100">{totalLeads}</p>
         </div>
-        <div className="stat-card glass">
-          <h3>Belum Punya Website (Dari Filter)</h3>
-          <p className="value" style={{color: '#fca5a5'}}>{noWebsite}</p>
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
+          <h3 className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Belum Punya Website</h3>
+          <p className="text-4xl font-bold text-red-400">{noWebsite}</p>
         </div>
-        <div className="stat-card glass">
-          <h3>Kategori Bisnis Total</h3>
-          <p className="value" style={{color: '#93c5fd'}}>{categories.length}</p>
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
+          <h3 className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Total Kategori Bisnis</h3>
+          <p className="text-4xl font-bold text-blue-400">{categories.length}</p>
         </div>
       </div>
 
       {/* 2. Management Toolbar (Filter & Search) */}
-      <div className="mgmt-toolbar glass">
-        <div className="mgmt-header">
-          <input 
-            type="text" 
-            className="search-bar" 
-            placeholder="Cari nama bisnis atau alamat..." 
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-          <div style={{display: 'flex', gap: '1rem'}}>
-            <button className="btn" style={{background: '#10b981'}} onClick={handleExportCsv}>
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm space-y-6">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="relative w-full md:w-96">
+            <span className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500">🔍</span>
+            <input 
+              type="text" 
+              className="w-full bg-slate-950 border border-slate-700 rounded-full py-2.5 pl-11 pr-4 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors" 
+              placeholder="Cari nama bisnis atau alamat..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <div className="flex gap-3 w-full md:w-auto">
+            <button 
+              className="flex-1 md:flex-none px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-full transition-colors shadow-sm" 
+              onClick={handleExportCsv}
+            >
               ⬇️ Export CSV
             </button>
-            <button className="btn btn-danger" style={{padding: '0.75rem 1.5rem', fontSize: '1rem'}} onClick={handleDeleteAll}>
+            <button 
+              className="flex-1 md:flex-none px-4 py-2.5 border border-red-900/50 text-red-400 hover:bg-red-950/50 hover:text-red-300 text-sm font-medium rounded-full transition-colors" 
+              onClick={handleDeleteAll}
+            >
               🗑️ Hapus Semua
             </button>
           </div>
         </div>
         
-        <div style={{display: 'flex', flexWrap: 'wrap', gap: '2rem'}}>
-          <div className="filter-group">
-            <span className="filter-label">Filter Status Website:</span>
-            <div className="chip-container">
-              <div className={`filter-chip ${statusFilter === 'ALL' ? 'active' : ''}`} onClick={() => setStatusFilter('ALL')}>Semua</div>
-              <div className={`filter-chip ${statusFilter === 'NO_WEB' ? 'active' : ''}`} onClick={() => setStatusFilter('NO_WEB')}>Belum Punya Web</div>
-              <div className={`filter-chip ${statusFilter === 'HAS_WEB' ? 'active' : ''}`} onClick={() => setStatusFilter('HAS_WEB')}>Sudah Punya Web</div>
+        <div className="flex flex-col md:flex-row gap-8">
+          <div className="space-y-3">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Status Website</span>
+            <div className="flex flex-wrap gap-2">
+              <button 
+                className={`px-4 py-1.5 rounded-full text-xs font-medium border transition-colors ${statusFilter === 'ALL' ? 'bg-slate-200 text-slate-900 border-slate-200' : 'bg-transparent text-slate-400 border-slate-700 hover:bg-slate-800'}`} 
+                onClick={() => setStatusFilter('ALL')}
+              >Semua</button>
+              <button 
+                className={`px-4 py-1.5 rounded-full text-xs font-medium border transition-colors ${statusFilter === 'NO_WEB' ? 'bg-slate-200 text-slate-900 border-slate-200' : 'bg-transparent text-slate-400 border-slate-700 hover:bg-slate-800'}`} 
+                onClick={() => setStatusFilter('NO_WEB')}
+              >Belum Punya Web</button>
+              <button 
+                className={`px-4 py-1.5 rounded-full text-xs font-medium border transition-colors ${statusFilter === 'HAS_WEB' ? 'bg-slate-200 text-slate-900 border-slate-200' : 'bg-transparent text-slate-400 border-slate-700 hover:bg-slate-800'}`} 
+                onClick={() => setStatusFilter('HAS_WEB')}
+              >Sudah Punya Web</button>
             </div>
           </div>
 
-          <div className="filter-group">
-            <span className="filter-label">Filter Kategori (Deteksi Otomatis):</span>
-            <div className="chip-container">
-              <div className={`filter-chip ${categoryFilter === 'ALL' ? 'active' : ''}`} onClick={() => setCategoryFilter('ALL')}>Semua Kategori</div>
+          <div className="space-y-3">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Kategori Bisnis</span>
+            <div className="flex flex-wrap gap-2">
+              <button 
+                className={`px-4 py-1.5 rounded-full text-xs font-medium border transition-colors ${categoryFilter === 'ALL' ? 'bg-slate-200 text-slate-900 border-slate-200' : 'bg-transparent text-slate-400 border-slate-700 hover:bg-slate-800'}`} 
+                onClick={() => setCategoryFilter('ALL')}
+              >Semua Kategori</button>
               {availableCategories.map(cat => (
-                <div 
+                <button 
                   key={cat} 
-                  className={`filter-chip ${categoryFilter === cat ? 'active' : ''}`} 
+                  className={`px-4 py-1.5 rounded-full text-xs font-medium border transition-colors ${categoryFilter === cat ? 'bg-slate-200 text-slate-900 border-slate-200' : 'bg-transparent text-slate-400 border-slate-700 hover:bg-slate-800'}`} 
                   onClick={() => setCategoryFilter(cat)}
                 >
                   {cat}
-                </div>
+                </button>
               ))}
             </div>
           </div>
@@ -181,57 +192,68 @@ export default function DashboardClient({ initialLeads, categories }) {
       </div>
 
       {/* 3. Tabel Data */}
-      <div className="glass table-container">
-        <table>
-          <thead>
-            <tr>
-              <th>Nama Bisnis</th>
-              <th>Kategori</th>
-              <th>Alamat</th>
-              <th>Kontak</th>
-              <th>Website</th>
-              <th>Aksi</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredLeads.length === 0 ? (
-              <tr>
-                <td colSpan="6" style={{textAlign: 'center', color: 'var(--text-muted)', padding: '3rem 1rem'}}>
-                  Tidak ada data yang cocok dengan filter / pencarian.
-                </td>
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-slate-800">
+                <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Nama Bisnis</th>
+                <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Kategori</th>
+                <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Alamat</th>
+                <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Kontak</th>
+                <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Website</th>
+                <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-right">Aksi</th>
               </tr>
-            ) : filteredLeads.map(lead => (
-              <tr key={lead.id}>
-                <td style={{fontWeight: 600}}>{lead.name}</td>
-                <td>
-                  <span className="badge cat">{lead.categoryName || 'Tanpa Kategori'}</span>
-                </td>
-                <td style={{color: 'var(--text-muted)'}}>
-                  {lead.address || '-'}
-                </td>
-                <td>
-                  {lead.phone ? (
-                    <a className="link" href={`https://wa.me/${lead.phone.replace(/\D/g, '').replace(/^0/, '62')}`} target="_blank" rel="noopener noreferrer">
-                      {lead.phone}
-                    </a>
-                  ) : '-'}
-                </td>
-                <td>
-                  {lead.website ? (
-                    <a className="link" href={lead.website} target="_blank" rel="noopener noreferrer">Kunjungi</a>
-                  ) : (
-                    <span className="badge no">Belum Ada</span>
-                  )}
-                </td>
-                <td>
-                  <button className="btn btn-danger" onClick={() => handleDelete(lead.id, lead.name)}>
-                    Hapus
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-800/50">
+              {filteredLeads.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="p-12 text-center text-slate-500 text-sm">
+                    Tidak ada data yang cocok dengan filter / pencarian.
+                  </td>
+                </tr>
+              ) : filteredLeads.map(lead => (
+                <tr key={lead.id} className="hover:bg-slate-800/20 transition-colors">
+                  <td className="p-4 text-sm font-semibold text-slate-200">{lead.name}</td>
+                  <td className="p-4">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                      {lead.categoryName || 'Tanpa Kategori'}
+                    </span>
+                  </td>
+                  <td className="p-4 text-sm text-slate-400 max-w-xs truncate" title={lead.address}>
+                    {lead.address || '-'}
+                  </td>
+                  <td className="p-4 text-sm">
+                    {lead.phone ? (
+                      <a className="text-blue-400 hover:text-blue-300 underline underline-offset-2" href={`https://wa.me/${lead.phone.replace(/\D/g, '').replace(/^0/, '62')}`} target="_blank" rel="noopener noreferrer">
+                        {lead.phone}
+                      </a>
+                    ) : (
+                      <span className="text-slate-500">-</span>
+                    )}
+                  </td>
+                  <td className="p-4">
+                    {lead.website ? (
+                      <a className="text-blue-400 hover:text-blue-300 text-sm underline underline-offset-2" href={lead.website} target="_blank" rel="noopener noreferrer">Kunjungi</a>
+                    ) : (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-900/30 text-red-400 border border-red-900/50">
+                        Belum Ada
+                      </span>
+                    )}
+                  </td>
+                  <td className="p-4 text-right">
+                    <button 
+                      className="px-3 py-1.5 bg-transparent border border-red-900/50 text-red-400 hover:bg-red-950/50 hover:text-red-300 text-xs font-medium rounded-lg transition-colors" 
+                      onClick={() => handleDelete(lead.id, lead.name)}
+                    >
+                      Hapus
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
