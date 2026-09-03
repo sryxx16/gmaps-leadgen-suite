@@ -39,7 +39,7 @@ export default function LoginPage() {
       <div className="max-w-md w-full bg-slate-900/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-slate-700/50 p-10">
 
         <div className="text-center mb-8">
-          <h2 className="text-2xl font-bold text-slate-100 mb-2">Area Terbatas</h2>
+          <h2 className="text-2xl font-bold text-slate-100 mb-2">Login Dashboard</h2>
           <p className="text-slate-400 text-sm">Masukkan Master Password untuk mengakses data Lead.</p>
         </div>
 
@@ -68,7 +68,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3.5 px-4 bg-gradient-to-r from-blue-500 to-teal-400 hover:from-blue-400 hover:to-teal-300 text-slate-950 font-bold rounded-xl shadow-[0_0_20px_rgba(59,130,246,0.3)] hover:shadow-[0_0_25px_rgba(59,130,246,0.5)] transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center"
+            className="w-full py-3.5 px-4 bg-slate-100 hover:bg-white text-slate-900 font-semibold rounded-xl shadow-sm transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center"
           >
             {loading ? (
               <span className="animate-pulse">Memeriksa...</span>
