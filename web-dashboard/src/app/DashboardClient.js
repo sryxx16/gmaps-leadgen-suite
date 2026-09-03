@@ -227,7 +227,7 @@ export default function DashboardClient({ initialLeads, categories }) {
                       rel="noopener noreferrer"
                       className="inline-flex mt-1 text-[11px] text-emerald-400 hover:text-emerald-300 hover:underline transition-colors font-medium items-center gap-1"
                     >
-                      Buka Maps ↗
+                      Buka Maps
                     </a>
                   </td>
                   <td className="p-4 text-sm">
