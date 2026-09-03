@@ -37,11 +37,6 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-800 via-slate-950 to-slate-950 flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-slate-900/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-slate-700/50 p-10">
-        <div className="flex justify-center mb-8">
-          <div className="w-20 h-20 rounded-full bg-gradient-to-b from-slate-700 to-slate-900 border border-slate-600 flex items-center justify-center text-3xl shadow-[0_0_30px_rgba(255,255,255,0.1)]">
-            🔒
-          </div>
-        </div>
 
         <div className="text-center mb-8">
           <h2 className="text-2xl font-bold text-slate-100 mb-2">Area Terbatas</h2>
@@ -58,9 +53,6 @@ export default function LoginPage() {
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-2">Master Password</label>
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-500">
-                🔑
-              </div>
               <input
                 type="password"
                 value={password}
@@ -68,7 +60,7 @@ export default function LoginPage() {
                 placeholder="Ketik password di sini..."
                 required
                 autoFocus
-                className="w-full pl-12 pr-4 py-3.5 bg-slate-950/50 border border-slate-700/50 rounded-xl text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all shadow-inner"
+                className="w-full px-4 py-3.5 bg-slate-950/50 border border-slate-700/50 rounded-xl text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all shadow-inner"
               />
             </div>
           </div>
