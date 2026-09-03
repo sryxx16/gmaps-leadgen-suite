@@ -181,6 +181,18 @@ a.link:hover {
   cursor: not-allowed;
 }
 
+.btn-danger {
+  background: rgba(239, 68, 68, 0.1);
+  color: #fca5a5;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.75rem;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--danger);
+  color: white;
+}
+
 .input-group {
   margin-bottom: 1.5rem;
   display: flex;
@@ -193,7 +205,7 @@ a.link:hover {
   color: var(--text-muted);
 }
 
-input[type="text"], input[type="file"], select {
+input[type="text"], input[type="file"], select, .search-bar {
   background: rgba(0,0,0,0.2);
   border: 1px solid var(--glass-border);
   color: var(--text-main);
@@ -201,9 +213,74 @@ input[type="text"], input[type="file"], select {
   border-radius: 8px;
   font-family: inherit;
 }
-input:focus, select:focus {
+input:focus, select:focus, .search-bar:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+/* Management Toolbar (Search & Filters) */
+.mgmt-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+}
+
+.mgmt-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.search-bar {
+  min-width: 300px;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.filter-label {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.chip-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.filter-chip {
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.filter-chip:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-main);
+}
+
+.filter-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+  font-weight: 600;
 }
 
 .import-box {
