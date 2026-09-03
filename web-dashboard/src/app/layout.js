@@ -1,37 +1,44 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { Inter } from 'next/font/google';
+import './globals.css';
+import Link from 'next/link';
+import { cookies } from 'next/headers';
+import LogoutButton from './LogoutButton';
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const inter = Inter({ subsets: ['latin'] });
 
 export const metadata = {
-  title: "GMaps Leads Dashboard",
-  description: "Monitor and manage scraped data from Google Maps",
+  title: 'GMaps LeadGen Dashboard',
+  description: 'Kelola data prospek klien dengan mudah',
 };
 
 export default function RootLayout({ children }) {
+  const cookieStore = cookies();
+  const isAuthenticated = cookieStore.has('auth');
+
   return (
-    <html lang="id" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body>
-        <div className="container">
-          <nav className="navbar glass">
-            <div className="nav-brand">LeadDash</div>
-            <div className="nav-links">
-              <a href="/">Dashboard</a>
-              <a href="/import">Import Data</a>
-            </div>
-          </nav>
-          <main>
-            {children}
-          </main>
-        </div>
+    <html lang="id">
+      <body className={inter.className}>
+        <nav className="navbar glass">
+          <div className="nav-brand">
+            <h1>GMaps LeadGen</h1>
+          </div>
+          <div className="nav-links">
+            {isAuthenticated ? (
+              <>
+                <Link href="/">Dashboard</Link>
+                <Link href="/import">Import Data</Link>
+                <LogoutButton />
+              </>
+            ) : (
+              <Link href="/login">Login</Link>
+            )}
+          </div>
+        </nav>
+        <main className="container">
+          {children}
+        </main>
       </body>
     </html>
   );
