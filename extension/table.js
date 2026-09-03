@@ -18,6 +18,7 @@ const mSaveBtn = document.getElementById('mSaveBtn');
 const mCancelBtn = document.getElementById('mCancelBtn');
 
 let allLeads = [];
+let currentFilteredLeads = [];
 
 // Ubah nomor telepon lokal (0812..., 62812..., +62812...) jadi format wa.me (62812...).
 function normalizePhoneForWa(phone) {
@@ -40,21 +41,22 @@ function render() {
   const query = searchInput.value.trim().toLowerCase();
   const filterNoSite = onlyNoWebsite.checked;
 
-  const filtered = allLeads.filter((l) => {
+  currentFilteredLeads = allLeads.filter((l) => {
     if (filterNoSite && l.hasWebsite) return false;
     if (!query) return true;
     return (
       l.name.toLowerCase().includes(query) ||
-      (l.address || '').toLowerCase().includes(query)
+      (l.address || '').toLowerCase().includes(query) ||
+      (l.category || '').toLowerCase().includes(query)
     );
   });
 
-  summary.textContent = `${filtered.length} data ditampilkan (dari ${allLeads.length} total)`;
+  summary.textContent = `${currentFilteredLeads.length} data ditampilkan (dari ${allLeads.length} total)`;
 
   tbody.innerHTML = '';
-  emptyState.hidden = filtered.length > 0;
+  emptyState.hidden = currentFilteredLeads.length > 0;
 
-  for (const lead of filtered) {
+  for (const lead of currentFilteredLeads) {
     const tr = document.createElement('tr');
 
     const websiteCell = lead.hasWebsite
@@ -97,9 +99,14 @@ function toCsvValue(v) {
 }
 
 function exportCsv() {
+  if (currentFilteredLeads.length === 0) {
+    alert('Tidak ada data yang tampil untuk di-export.');
+    return;
+  }
+  
   const rows = [
     ['Nama', 'Kategori', 'Alamat', 'Telepon', 'Website', 'Punya Website', 'Diambil'],
-    ...allLeads.map((l) => [
+    ...currentFilteredLeads.map((l) => [
       l.name,
       l.category || '',
       l.address || '',
@@ -120,9 +127,13 @@ function exportCsv() {
 }
 
 function exportJson() {
+  if (currentFilteredLeads.length === 0) {
+    alert('Tidak ada data yang tampil untuk di-export.');
+    return;
+  }
   // Skema ini yang dipakai kalau mau diproses di website sendiri:
   // { name, address, phone, website, hasWebsite, category, mapsUrl, scrapedAt }
-  const json = JSON.stringify(allLeads, null, 2);
+  const json = JSON.stringify(currentFilteredLeads, null, 2);
   const blob = new Blob([json], { type: 'application/json;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
