@@ -18,7 +18,7 @@ export default async function RootLayout({ children }) {
         {isAuthenticated && (
           <nav className="max-w-4xl mx-auto my-6 px-6 py-4 bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-full flex justify-between items-center shadow-lg">
             <div className="flex items-center gap-6">
-              <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-teal-400 bg-clip-text text-transparent">
+              <h1 className="text-xl font-bold text-white tracking-tight">
                 GMaps LeadGen
               </h1>
               <div className="flex gap-4">

@@ -126,27 +126,26 @@ export default function DashboardClient({ initialLeads, categories }) {
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm space-y-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div className="relative w-full md:w-96">
-            <span className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500">🔍</span>
             <input 
               type="text" 
-              className="w-full bg-slate-950 border border-slate-700 rounded-full py-2.5 pl-11 pr-4 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors" 
+              className="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-2.5 px-4 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500 transition-colors shadow-inner" 
               placeholder="Cari nama bisnis atau alamat..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <div className="flex gap-3 w-full md:w-auto">
+          <div className="flex gap-3 w-full md:w-auto mt-4 md:mt-0">
             <button 
-              className="flex-1 md:flex-none px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-full transition-colors shadow-sm" 
+              className="flex-1 md:flex-none px-5 py-2.5 bg-slate-100 hover:bg-white text-slate-900 text-sm font-semibold rounded-xl transition-all shadow-sm" 
               onClick={handleExportCsv}
             >
-              ⬇️ Export CSV
+              Export CSV
             </button>
             <button 
-              className="flex-1 md:flex-none px-4 py-2.5 border border-red-900/50 text-red-400 hover:bg-red-950/50 hover:text-red-300 text-sm font-medium rounded-full transition-colors" 
+              className="flex-1 md:flex-none px-5 py-2.5 bg-transparent border border-red-900/50 text-red-400 hover:bg-red-950/50 hover:text-red-300 text-sm font-semibold rounded-xl transition-colors" 
               onClick={handleDeleteAll}
             >
-              🗑️ Hapus Semua
+              Hapus Semua
             </button>
           </div>
         </div>
@@ -225,18 +224,18 @@ export default function DashboardClient({ initialLeads, categories }) {
                   </td>
                   <td className="p-4 text-sm">
                     {lead.phone ? (
-                      <a className="text-blue-400 hover:text-blue-300 underline underline-offset-2" href={`https://wa.me/${lead.phone.replace(/\D/g, '').replace(/^0/, '62')}`} target="_blank" rel="noopener noreferrer">
+                      <a className="text-slate-300 hover:text-white underline underline-offset-4 decoration-slate-600 hover:decoration-slate-300 transition-colors" href={`https://wa.me/${lead.phone.replace(/\D/g, '').replace(/^0/, '62')}`} target="_blank" rel="noopener noreferrer">
                         {lead.phone}
                       </a>
                     ) : (
-                      <span className="text-slate-500">-</span>
+                      <span className="text-slate-600">-</span>
                     )}
                   </td>
                   <td className="p-4">
                     {lead.website ? (
-                      <a className="text-blue-400 hover:text-blue-300 text-sm underline underline-offset-2" href={lead.website} target="_blank" rel="noopener noreferrer">Kunjungi</a>
+                      <a className="text-slate-300 hover:text-white text-sm underline underline-offset-4 decoration-slate-600 hover:decoration-slate-300 transition-colors" href={lead.website} target="_blank" rel="noopener noreferrer">Kunjungi</a>
                     ) : (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-900/30 text-red-400 border border-red-900/50">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-800 text-slate-400 border border-slate-700">
                         Belum Ada
                       </span>
                     )}
