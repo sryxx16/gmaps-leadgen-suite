@@ -6,7 +6,7 @@ export async function POST() {
     const db = await openDb();
     
     // Hapus semua data dari tabel Lead
-    await db.run('DELETE FROM Lead');
+    await db.execute('DELETE FROM Lead');
     
     return NextResponse.json({ success: true });
   } catch (error) {

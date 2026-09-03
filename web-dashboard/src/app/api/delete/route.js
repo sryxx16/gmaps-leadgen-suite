@@ -10,9 +10,9 @@ export async function POST(request) {
     }
 
     const db = await openDb();
-    const result = await db.run('DELETE FROM Lead WHERE id = ?', [id]);
+    const result = await db.execute('DELETE FROM Lead WHERE id = ?', [id]);
 
-    if (result.changes > 0) {
+    if (result.rowsAffected > 0) {
       return NextResponse.json({ success: true });
     } else {
       return NextResponse.json({ success: false, error: 'Data tidak ditemukan.' }, { status: 404 });

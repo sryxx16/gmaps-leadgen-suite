@@ -1,22 +1,24 @@
-import sqlite3 from 'sqlite3';
-import { open } from 'sqlite';
-import path from 'path';
+import { createClient } from '@libsql/client';
 
 let db = null;
 
 export async function openDb() {
   if (!db) {
-    db = await open({
-      filename: path.join(process.cwd(), 'leads.db'),
-      driver: sqlite3.Database
+    // Gunakan Turso Cloud jika ada URL-nya, atau gunakan file lokal jika tidak ada (buat ngetes di komputer sendiri)
+    db = createClient({
+      url: process.env.TURSO_DATABASE_URL || 'file:leads.db',
+      authToken: process.env.TURSO_AUTH_TOKEN,
     });
 
-    await db.exec(`
+    // Inisialisasi tabel jika belum ada
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS Category (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT UNIQUE NOT NULL
       );
-
+    `);
+    
+    await db.execute(`
       CREATE TABLE IF NOT EXISTS Lead (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,

@@ -9,10 +9,11 @@ export async function POST(request) {
     // 1. Dapatkan atau buat kategori jika diisi manual
     let manualCatId = null;
     if (categoryName) {
-      let cat = await db.get('SELECT id FROM Category WHERE name = ?', [categoryName]);
+      let catResult = await db.execute('SELECT id FROM Category WHERE name = ?', [categoryName]);
+      let cat = catResult.rows[0];
       if (!cat) {
-        const result = await db.run('INSERT INTO Category (name) VALUES (?)', [categoryName]);
-        manualCatId = result.lastID;
+        const result = await db.execute('INSERT INTO Category (name) VALUES (?)', [categoryName]);
+        manualCatId = result.lastInsertRowid;
       } else {
         manualCatId = cat.id;
       }
@@ -25,16 +26,17 @@ export async function POST(request) {
       let finalCatId = manualCatId;
       
       if (!categoryName && finalCategoryName) {
-         let c = await db.get('SELECT id FROM Category WHERE name = ?', [finalCategoryName]);
+         let cResult = await db.execute('SELECT id FROM Category WHERE name = ?', [finalCategoryName]);
+         let c = cResult.rows[0];
          if (!c) {
-           const res = await db.run('INSERT INTO Category (name) VALUES (?)', [finalCategoryName]);
-           finalCatId = res.lastID;
+           const res = await db.execute('INSERT INTO Category (name) VALUES (?)', [finalCategoryName]);
+           finalCatId = res.lastInsertRowid;
          } else {
            finalCatId = c.id;
          }
       }
 
-      await db.run(`
+      await db.execute(`
         INSERT INTO Lead (name, address, phone, website, mapsUrl, scrapedAt, categoryId)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `, [
