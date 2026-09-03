@@ -5,9 +5,9 @@
   --glass-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
   --text-main: #f8fafc;
   --text-muted: #94a3b8;
-  --accent: #6366f1;
-  --accent-gradient: linear-gradient(135deg, #4f46e5 0%, #ec4899 100%);
-  --accent-hover: linear-gradient(135deg, #4338ca 0%, #db2777 100%);
+  --accent: #38bdf8;
+  --accent-gradient: linear-gradient(135deg, #0ea5e9 0%, #14b8a6 100%);
+  --accent-hover: linear-gradient(135deg, #0284c7 0%, #0d9488 100%);
   --danger: #ef4444;
   --danger-bg: rgba(239, 68, 68, 0.1);
 }
@@ -97,21 +97,21 @@ body {
 .blob-1 {
   top: -10%; left: -10%;
   width: 50vw; height: 50vw;
-  background: #4f46e5;
+  background: #0284c7; /* Sky Blue */
   animation-delay: 0s;
 }
 
 .blob-2 {
   bottom: -20%; right: -10%;
   width: 60vw; height: 60vw;
-  background: #ec4899;
+  background: #0f766e; /* Teal */
   animation-delay: -3s;
 }
 
 .blob-3 {
   top: 30%; left: 40%;
   width: 40vw; height: 40vw;
-  background: #8b5cf6;
+  background: #3b82f6; /* Blue */
   animation-delay: -6s;
 }
 
@@ -209,9 +209,9 @@ input[type="password"] {
 
 input[type="password"]:focus {
   outline: none;
-  border-color: #8b5cf6;
+  border-color: #38bdf8;
   background: rgba(0, 0, 0, 0.4);
-  box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.15);
+  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.15);
 }
 
 /* Dynamic Buttons */
@@ -226,13 +226,13 @@ input[type="password"]:focus {
   font-weight: 700;
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 10px 20px -10px rgba(236, 72, 153, 0.7);
+  box-shadow: 0 10px 20px -10px rgba(14, 165, 233, 0.5);
   margin-top: 1.5rem;
 }
 
 .btn-primary:hover {
   transform: translateY(-3px) scale(1.02);
-  box-shadow: 0 15px 25px -10px rgba(236, 72, 153, 0.9);
+  box-shadow: 0 15px 25px -10px rgba(14, 165, 233, 0.7);
 }
 
 /* Error Message */
