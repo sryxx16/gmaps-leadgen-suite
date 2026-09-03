@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "GMaps Lead Finder",
+  "version": "1.0.0",
+  "description": "Cari bisnis di Google Maps yang belum punya website, buat lead generation jasa pembuatan website.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["https://www.google.com/maps/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "GMaps Lead Finder"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.google.com/maps/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

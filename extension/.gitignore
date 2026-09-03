@@ -1,0 +1,14 @@
+# Ignored files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Node modules (just in case they add a package.json later for linting/formatting)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Extension builds / zip files
+*.zip
+*.crx

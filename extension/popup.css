@@ -1,0 +1,148 @@
+:root {
+  --ink: #1b2430;
+  --teal: #2fa88a;
+  --teal-dark: #23816b;
+  --bg: #f7f7f5;
+  --muted: #5b6472;
+  --border: #e1e2de;
+  --danger: #c2483a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  width: 300px;
+  margin: 0;
+  font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+header {
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+h1 {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.subtitle {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+main {
+  padding: 16px 18px 18px;
+}
+
+.field {
+  margin-bottom: 14px;
+}
+
+label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+input[type="number"] {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 14px;
+  background: #fff;
+  color: var(--ink);
+}
+
+input[type="number"]:focus {
+  outline: 2px solid var(--teal);
+  outline-offset: 1px;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+button {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 14px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  flex: 1;
+}
+
+button.primary {
+  background: var(--teal);
+  color: #fff;
+}
+button.primary:hover:not(:disabled) { background: var(--teal-dark); }
+
+button.secondary {
+  background: #fff;
+  border-color: var(--border);
+  color: var(--ink);
+}
+button.secondary:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.status {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+  min-height: 32px;
+}
+
+.progress-wrap {
+  margin-top: 12px;
+}
+
+.progress-bar {
+  height: 6px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--teal);
+  transition: width 0.3s ease;
+}
+
+.progress-label {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+}
+
+.link-btn {
+  display: block;
+  width: 100%;
+  margin-top: 16px;
+  background: none;
+  border: none;
+  color: var(--teal-dark);
+  font-size: 12.5px;
+  padding: 4px 0;
+  text-align: left;
+}
+.link-btn:hover { text-decoration: underline; }

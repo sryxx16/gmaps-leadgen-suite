@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <title>Hasil — GMaps Lead Finder</title>
+  <link rel="stylesheet" href="table.css" />
+</head>
+<body>
+  <header>
+    <div class="title-block">
+      <h1>Daftar Calon Client</h1>
+      <p id="summary" class="summary">0 data</p>
+    </div>
+    <div class="toolbar">
+      <input type="search" id="search" placeholder="Cari nama / alamat..." />
+      <label class="toggle">
+        <input type="checkbox" id="onlyNoWebsite" checked />
+        Cuma yang belum punya website
+      </label>
+      <button id="exportCsvBtn" class="secondary">Export CSV</button>
+      <button id="exportJsonBtn" class="secondary">Export JSON</button>
+      <button id="addManualBtn" class="secondary">+ Tambah manual</button>
+      <button id="clearBtn" class="danger">Hapus semua</button>
+    </div>
+  </header>
+
+  <div id="manualForm" class="manual-form" hidden>
+    <input type="text" id="mName" placeholder="Nama bisnis *" />
+    <input type="text" id="mAddress" placeholder="Alamat" />
+    <input type="text" id="mPhone" placeholder="Telepon (mis. 0812xxxxxxx)" />
+    <input type="text" id="mCategory" placeholder="Kategori (mis. Toko Sepeda)" />
+    <input type="url" id="mWebsite" placeholder="URL website (kosongkan kalau belum ada)" />
+    <input type="url" id="mMapsUrl" placeholder="Link Google Maps (opsional)" />
+    <div class="manual-form-actions">
+      <button id="mSaveBtn" class="secondary">Simpan</button>
+      <button id="mCancelBtn" class="secondary">Batal</button>
+    </div>
+  </div>
+
+  <main>
+    <table id="leadsTable">
+      <thead>
+        <tr>
+          <th>Nama</th>
+          <th>Kategori</th>
+          <th>Alamat</th>
+          <th>Telepon</th>
+          <th>Website</th>
+          <th>Diambil</th>
+          <th>Aksi</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div id="emptyState" class="empty-state" hidden>
+      Belum ada data. Buka Google Maps, cari kategori bisnis, lalu jalankan lewat popup extension.
+    </div>
+  </main>
+
+  <script src="table.js"></script>
+</body>
+</html>

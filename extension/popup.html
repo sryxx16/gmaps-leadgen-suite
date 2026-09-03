@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <title>GMaps Lead Finder</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <h1>GMaps Lead Finder</h1>
+    <p class="subtitle">Cari bisnis tanpa website dari hasil pencarian Maps</p>
+  </header>
+
+  <main>
+    <div class="field">
+      <label for="target">Jumlah data BARU yang mau diambil sesi ini</label>
+      <input type="number" id="target" min="1" max="1000" value="20" />
+    </div>
+
+    <div class="actions">
+      <button id="startBtn" class="primary">Mulai</button>
+      <button id="stopBtn" class="secondary" disabled>Stop</button>
+    </div>
+
+    <div id="status" class="status">
+      Buka Google Maps, cari kategori bisnis (mis. "LPK Depok"), lalu tekan Mulai.
+    </div>
+
+    <div class="progress-wrap" id="progressWrap" hidden>
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-label" id="progressLabel">0 / 0</div>
+    </div>
+
+    <button id="openTableBtn" class="link-btn">Buka tabel hasil →</button>
+  </main>
+
+  <script src="popup.js"></script>
+</body>
+</html>
