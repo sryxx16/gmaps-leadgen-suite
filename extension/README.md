@@ -3,7 +3,9 @@
 ![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
-Ekstensi Google Chrome untuk melakukan *scraping* data bisnis (UMKM, Toko, dll) dari Google Maps. Ekstensi ini sangat berguna untuk **Lead Generation**, khususnya mencari bisnis yang **belum memiliki website**, untuk kemudian ditawari jasa pembuatan website atau layanan B2B lainnya.
+Ekstensi Google Chrome untuk melakukan *scraping* data bisnis (UMKM, Toko, dll) dari Google Maps. 
+
+**Tujuan Utama:** Ekstensi ini dibuat khusus untuk **membantu para programmer / web developer mempermudah pencarian klien**. Ekstensi ini berfokus mencari dan menyaring data toko atau usaha yang **belum memiliki website**, sehingga Anda bisa dengan mudah menghubungi mereka dan menawarkan jasa pembuatan website.
 
 ## ✨ Fitur Utama
 

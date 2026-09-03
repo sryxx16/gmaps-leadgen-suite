@@ -2,7 +2,12 @@
 
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
-Repositori ini adalah sebuah **Monorepo** yang berisi dua bagian utama untuk kebutuhan *Lead Generation* dari Google Maps:
+Repositori ini adalah sebuah **Monorepo** yang berisi *tools* lengkap untuk melakukan otomatisasi pencarian prospek klien (Lead Generation) dari Google Maps. 
+
+**Tujuan Utama Alat Ini:**
+Alat ini dirancang khusus untuk **membantu para programmer, web developer, atau agensi IT mempermudah pencarian klien**. Ekstensi ini akan men-scrap (mengambil) data toko atau tempat usaha dari Google Maps, lalu menyaring mana bisnis yang **belum menggunakan atau belum memiliki website**, sehingga Anda bisa langsung menawarkan jasa pembuatan website kepada mereka.
+
+Repositori ini terdiri dari dua bagian utama:
 
 1. **`extension/`** — Ekstensi Google Chrome untuk melakukan scraping data bisnis secara otomatis dari halaman pencarian Google Maps.
 2. **`web-dashboard/`** — Aplikasi Next.js untuk menerima file *export JSON* dari ekstensi, menyimpan data ke dalam SQLite lokal, dan menampilkannya di Dashboard dengan UI modern.
