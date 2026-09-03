@@ -2,22 +2,31 @@ import { openDb } from '@/lib/db';
 import DashboardClient from './DashboardClient';
 
 export default async function Dashboard() {
-  const db = await openDb();
+  const supabase = await openDb();
   
   // Ambil data leads
-  const leadsResult = await db.execute(`
-    SELECT L.*, C.name as categoryName 
-    FROM Lead L
-    LEFT JOIN Category C ON L.categoryId = C.id
-    ORDER BY L.id DESC
-  `);
-  const leads = leadsResult.rows;
+  const { data: leads, error: leadsError } = await supabase
+    .from('Lead')
+    .select('*, categoryName:Category(name)')
+    .order('id', { ascending: false });
+
+  if (leadsError) console.error("Error fetching leads from Supabase:", leadsError);
+
+  // Rapikan format relasi categoryName dari objek ke string
+  const formattedLeads = leads ? leads.map(l => ({
+    ...l,
+    categoryName: l.categoryName?.name || 'Tanpa Kategori'
+  })) : [];
   
   // Ambil semua kategori yang ada di sistem
-  const categoriesResult = await db.execute('SELECT * FROM Category ORDER BY name');
-  const categories = categoriesResult.rows;
+  const { data: categories, error: catsError } = await supabase
+    .from('Category')
+    .select('*')
+    .order('name');
+    
+  if (catsError) console.error("Error fetching categories:", catsError);
 
   return (
-    <DashboardClient initialLeads={leads} categories={categories} />
+    <DashboardClient initialLeads={formattedLeads} categories={categories || []} />
   );
 }
