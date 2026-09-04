@@ -37,6 +37,16 @@ export async function POST(request) {
          }
       }
 
+      // Cek apakah data sudah ada (mencegah duplikat berdasarkan nama dan alamat)
+      const existing = await sql`
+        SELECT id FROM "Lead" 
+        WHERE name = ${lead.name} AND address = ${lead.address || ''} 
+        LIMIT 1
+      `;
+      if (existing.length > 0) {
+        continue; // Skip kalau data udah ada di database
+      }
+
       await sql`
         INSERT INTO "Lead" (name, address, phone, website, "mapsUrl", "scrapedAt", "categoryId", rating, "reviewCount")
         VALUES (
