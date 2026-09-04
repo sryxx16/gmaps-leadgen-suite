@@ -71,12 +71,14 @@ export default function DashboardClient({ initialLeads, categories }) {
     }
 
     const rows = [
-      ['Nama Bisnis', 'Kategori', 'Alamat', 'Telepon', 'Website', 'Status Website', 'Tanggal Scrape']
+      ['Nama Bisnis', 'Rating', 'Ulasan', 'Kategori', 'Alamat', 'Telepon', 'Website', 'Status Website', 'Tanggal Scrape']
     ];
 
     filteredLeads.forEach(l => {
       rows.push([
         `"${(l.name || '').replace(/"/g, '""')}"`,
+        `"${(l.rating || '').replace(/"/g, '""')}"`,
+        `"${(l.reviewCount || '').replace(/"/g, '""')}"`,
         `"${(l.categoryName || '').replace(/"/g, '""')}"`,
         `"${(l.address || '').replace(/"/g, '""')}"`,
         `"${(l.phone || '').replace(/"/g, '""')}"`,
@@ -197,6 +199,7 @@ export default function DashboardClient({ initialLeads, categories }) {
             <thead>
               <tr className="border-b border-slate-800">
                 <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Nama Bisnis</th>
+                <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Rating</th>
                 <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Kategori</th>
                 <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Alamat</th>
                 <th className="p-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Kontak</th>
@@ -214,6 +217,16 @@ export default function DashboardClient({ initialLeads, categories }) {
               ) : filteredLeads.map(lead => (
                 <tr key={lead.id} className="hover:bg-slate-800/20 transition-colors">
                   <td className="p-4 text-sm font-semibold text-slate-200">{lead.name}</td>
+                  <td className="p-4 text-sm text-slate-300 whitespace-nowrap">
+                    {lead.rating ? (
+                      <div className="flex flex-col">
+                        <span className="text-yellow-500 font-bold">⭐ {lead.rating}</span>
+                        <span className="text-xs text-slate-500">{lead.reviewCount || '0'} ulasan</span>
+                      </div>
+                    ) : (
+                      <span className="text-slate-600 italic">Belum ada</span>
+                    )}
+                  </td>
                   <td className="p-4">
                     <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700 whitespace-nowrap">
                       {lead.categoryName || 'Tanpa Kategori'}

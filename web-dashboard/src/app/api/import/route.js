@@ -38,7 +38,7 @@ export async function POST(request) {
       }
 
       await sql`
-        INSERT INTO "Lead" (name, address, phone, website, "mapsUrl", "scrapedAt", "categoryId")
+        INSERT INTO "Lead" (name, address, phone, website, "mapsUrl", "scrapedAt", "categoryId", rating, "reviewCount")
         VALUES (
           ${lead.name}, 
           ${lead.address || ''}, 
@@ -46,7 +46,9 @@ export async function POST(request) {
           ${lead.website || ''}, 
           ${lead.mapsUrl || ''}, 
           ${lead.scrapedAt || new Date().toISOString()}, 
-          ${finalCatId}
+          ${finalCatId},
+          ${lead.rating || ''},
+          ${lead.reviewCount || ''}
         )
       `;
       insertedCount++;
