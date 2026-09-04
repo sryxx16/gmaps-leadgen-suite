@@ -232,7 +232,14 @@ export default function DashboardClient({ initialLeads, categories }) {
                   </td>
                   <td className="p-4 text-sm">
                     {lead.phone ? (
-                      <a className="text-slate-300 hover:text-white underline underline-offset-4 decoration-slate-600 hover:decoration-slate-300 transition-colors" href={`https://wa.me/${lead.phone.replace(/\D/g, '').replace(/^0/, '62')}`} target="_blank" rel="noopener noreferrer">
+                      <a 
+                        className="text-slate-300 hover:text-white underline underline-offset-4 decoration-slate-600 hover:decoration-slate-300 transition-colors" 
+                        href={`https://wa.me/${lead.phone.replace(/\D/g, '').replace(/^0/, '62')}?text=${encodeURIComponent(
+                          `Halo Kak, izin menghubungi ya 🙏\n\nKami menemukan *${lead.name}* saat melihat beberapa usaha lokal di Google Maps. Kami kebetulan bergerak di bidang pembuatan website untuk UMKM dan bisnis lokal.\n\nKami lihat saat ini *${lead.name}* belum memiliki website resmi. Kalau Kakak tertarik, kami bisa bantu buatkan website sederhana untuk menampilkan profil usaha, produk/layanan, lokasi, kontak WhatsApp, dan informasi lainnya.\n\nKalau berkenan, kami juga bisa kirim contoh desainnya terlebih dahulu tanpa komitmen.\n\nKalau belum membutuhkan, tidak apa-apa ya Kak. Terima kasih sebelumnya 🙏`
+                        )}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                      >
                         {lead.phone}
                       </a>
                     ) : (
