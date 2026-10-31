@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   DEFAULT_OPENROUTER_MODEL,
-  analyzeLeadWithOpenRouter,
+  analyzeLeadWithAi,
+  resolveActiveProvider,
   loadAiSettings,
   saveAiSettings,
   subscribeAiSettings,
@@ -274,10 +275,12 @@ export default function DashboardClient({ initialLeads = [] }) {
 
   const handleSaveAiSettings = (nextSettings) => {
     const saved = saveAiSettings(nextSettings);
+    const active = resolveActiveProvider(saved);
+    const providerLabel = active === 'deepseek' ? 'DeepSeek' : 'OpenRouter Free';
     setShowAiSettingsModal(false);
     setNotice({
       type: 'success',
-      text: `Pengaturan OpenRouter disimpan (Model: ${saved.model}).`,
+      text: `Pengaturan AI disimpan (Provider aktif: ${providerLabel}).`,
     });
   };
 
@@ -287,12 +290,15 @@ export default function DashboardClient({ initialLeads = [] }) {
     if (analyzingIds.includes(key)) return;
 
     const latestSettings = loadAiSettings();
+    const hasAnyKey = Boolean(
+      latestSettings.deepseekApiKey?.trim() || latestSettings.openrouterApiKey?.trim()
+    );
 
-    if (!latestSettings.apiKey) {
+    if (!hasAnyKey) {
       setShowAiSettingsModal(true);
       setNotice({
         type: 'warning',
-        text: 'Masukkan OpenRouter API Key gratis terlebih dahulu untuk menjalankan analisis AI.',
+        text: 'Masukkan API Key DeepSeek atau OpenRouter terlebih dahulu untuk menjalankan analisis AI.',
       });
       return;
     }
@@ -301,7 +307,7 @@ export default function DashboardClient({ initialLeads = [] }) {
     setNotice(null);
 
     try {
-      const aiResult = await analyzeLeadWithOpenRouter(lead, latestSettings);
+      const aiResult = await analyzeLeadWithAi(lead, latestSettings);
 
       setLeads((prev) =>
         prev.map((item) =>
@@ -317,9 +323,12 @@ export default function DashboardClient({ initialLeads = [] }) {
           delete copy[key];
           return copy;
         });
+        const fallbackNote = aiResult.fallbackFrom
+          ? ` (dialihkan otomatis ke ${aiResult.providerUsed === 'deepseek' ? 'DeepSeek' : 'OpenRouter Free'})`
+          : '';
         setNotice({
-          type: 'success',
-          text: `Analisis "${lead.name}" selesai: ${aiResult.leadQualification} (Skor ${aiResult.leadScore}/100).`,
+          type: aiResult.fallbackFrom ? 'warning' : 'success',
+          text: `Analisis "${lead.name}" selesai: ${aiResult.leadQualification} (Skor ${aiResult.leadScore}/100)${fallbackNote}.`,
         });
       } catch {
         const nextUnsynced = { ...unsyncedAiMap, [key]: aiResult };
@@ -337,7 +346,7 @@ export default function DashboardClient({ initialLeads = [] }) {
       }
       setNotice({
         type: 'error',
-        text: `Gagal analisis "${lead.name}": ${err?.message || 'Kesalahan OpenRouter.'}`,
+        text: `Gagal analisis "${lead.name}": ${err?.message || 'Kesalahan provider AI.'}`,
         actionLabel: err?.retryable ? 'Coba Lagi' : undefined,
         onAction: err?.retryable ? () => handleAnalyzeSingle(lead) : undefined,
       });
@@ -365,15 +374,22 @@ export default function DashboardClient({ initialLeads = [] }) {
     if (bulkState.running) return;
 
     const latestSettings = loadAiSettings();
+    const hasAnyKey = Boolean(
+      latestSettings.deepseekApiKey?.trim() || latestSettings.openrouterApiKey?.trim()
+    );
 
-    if (!latestSettings.apiKey) {
+    if (!hasAnyKey) {
       setShowAiSettingsModal(true);
       setNotice({
         type: 'warning',
-        text: 'Isi OpenRouter API Key gratis terlebih dahulu sebelum menjalankan Riset AI Masal.',
+        text: 'Isi API Key DeepSeek atau OpenRouter terlebih dahulu sebelum menjalankan Riset AI Masal.',
       });
       return;
     }
+
+    const activeProvider = resolveActiveProvider(latestSettings);
+    const providerLabel = activeProvider === 'deepseek' ? 'DeepSeek' : 'OpenRouter Free';
+    const stepDelayMs = activeProvider === 'deepseek' ? 900 : 3200;
 
     const queue = unresearchedInFilter;
     if (queue.length === 0) {
@@ -386,7 +402,7 @@ export default function DashboardClient({ initialLeads = [] }) {
 
     if (
       !window.confirm(
-        `Jalankan analisis OpenRouter AI gratis untuk ${queue.length} prospek pada filter saat ini?`
+        `Jalankan analisis AI (${providerLabel}) untuk ${queue.length} prospek pada filter saat ini?`
       )
     ) {
       return;
@@ -400,7 +416,7 @@ export default function DashboardClient({ initialLeads = [] }) {
       done: 0,
       total: queue.length,
       currentName: queue[0]?.name || '',
-      note: 'Menjaga jeda aman ~3.2 detik/prospek sesuai batas gratis OpenRouter.',
+      note: `Memulai antrean via ${providerLabel}...`,
     });
     setNotice(null);
 
@@ -416,26 +432,26 @@ export default function DashboardClient({ initialLeads = [] }) {
       setBulkState((prev) => ({
         ...prev,
         currentName: target.name,
-        note: `Memproses [${i + 1}/${queue.length}] — ${target.name}`,
+        note: `Memproses [${i + 1}/${queue.length}] (${providerLabel}) — ${target.name}`,
       }));
       setAnalyzingIds((prev) => (prev.includes(key) ? prev : [...prev, key]));
 
       try {
         let aiResult;
         try {
-          aiResult = await analyzeLeadWithOpenRouter(target, latestSettings, {
+          aiResult = await analyzeLeadWithAi(target, latestSettings, {
             signal: abortController.signal,
           });
         } catch (err) {
           if (err?.status === 429 && !abortController.signal.aborted) {
             setBulkState((prev) => ({
               ...prev,
-              note: 'Rate limit tercapai, menunggu jeda aman 6 detik lalu beralih ke Auto-Router...',
+              note: 'Rate limit tercapai, menunggu jeda aman 6 detik lalu mencoba kembali...',
             }));
             await new Promise((r) => setTimeout(r, 6200));
-            aiResult = await analyzeLeadWithOpenRouter(
+            aiResult = await analyzeLeadWithAi(
               target,
-              { ...latestSettings, model: DEFAULT_OPENROUTER_MODEL },
+              { ...latestSettings, openrouterModel: DEFAULT_OPENROUTER_MODEL },
               { signal: abortController.signal }
             );
           } else {
@@ -475,7 +491,7 @@ export default function DashboardClient({ initialLeads = [] }) {
 
       if (i < queue.length - 1 && !abortController.signal.aborted) {
         await new Promise((resolve) => {
-          const t = setTimeout(resolve, 3200);
+          const t = setTimeout(resolve, stepDelayMs);
           abortController.signal.addEventListener(
             'abort',
             () => {
@@ -667,7 +683,11 @@ export default function DashboardClient({ initialLeads = [] }) {
     });
   };
 
-  const hasApiKey = Boolean(aiSettings.apiKey?.trim());
+  const hasApiKey = Boolean(
+    aiSettings.deepseekApiKey?.trim() || aiSettings.openrouterApiKey?.trim()
+  );
+  const activeProviderName =
+    resolveActiveProvider(aiSettings) === 'deepseek' ? 'DeepSeek' : 'OpenRouter';
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-5">
@@ -678,7 +698,7 @@ export default function DashboardClient({ initialLeads = [] }) {
             Dashboard Prospek
           </h1>
           <p className="text-xs sm:text-sm text-zinc-400">
-            Kelola hasil scraping Google Maps, skor prospek dengan OpenRouter AI gratis, dan kirim penawaran via WhatsApp.
+            Kelola hasil scraping Google Maps, skor prospek dengan DeepSeek &amp; OpenRouter AI, dan kirim penawaran via WhatsApp.
           </p>
         </div>
 
@@ -709,7 +729,7 @@ export default function DashboardClient({ initialLeads = [] }) {
                 hasApiKey ? 'bg-emerald-400' : 'bg-amber-400'
               }`}
             />
-            <span>Pengaturan AI</span>
+            <span>AI: {activeProviderName}</span>
           </button>
 
           <button
@@ -1548,7 +1568,7 @@ export default function DashboardClient({ initialLeads = [] }) {
       <SectionErrorBoundary title="Gagal memuat jendela pengaturan AI">
         {showAiSettingsModal && (
           <AiSettingsModal
-            key={`settings-${aiSettings.model}-${aiSettings.apiKey ? 'set' : 'empty'}`}
+            key={`settings-${aiSettings.primaryProvider}-${hasApiKey ? 'ready' : 'empty'}`}
             settings={aiSettings}
             onClose={() => setShowAiSettingsModal(false)}
             onSave={handleSaveAiSettings}

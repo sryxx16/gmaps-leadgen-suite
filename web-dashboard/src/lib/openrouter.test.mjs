@@ -5,7 +5,9 @@ import {
   ensureFreeModelId,
   filterFreeModels,
   parseAiResearchResponse,
+  analyzeLeadWithAi,
   analyzeLeadWithOpenRouter,
+  resolveActiveProvider,
 } from './openrouter.js';
 
 test('filterFreeModels keeps only zero-cost :free models and pins openrouter/free first', () => {
@@ -50,18 +52,97 @@ test('parseAiResearchResponse strips reasoning blocks and markdown fences cleanl
 \`\`\`
 Semoga membantu!`;
 
-  const res = parseAiResearchResponse(raw, 'deepseek/deepseek-r1:free');
+  const res = parseAiResearchResponse(raw, 'deepseek/deepseek-chat');
   assert.equal(res.leadQualification, 'HOT LEAD');
   assert.equal(res.leadScore, 92);
-  assert.equal(res.modelUsed, 'deepseek/deepseek-r1:free');
+  assert.equal(res.modelUsed, 'deepseek/deepseek-chat');
   assert.ok(res.pitchDraft.includes('420+'));
+});
+
+test('resolveActiveProvider defaults to DeepSeek without colliding when only one key is present', () => {
+  assert.equal(
+    resolveActiveProvider({
+      primaryProvider: 'deepseek',
+      deepseekApiKey: '',
+      openrouterApiKey: 'sk-or-v1-abc',
+    }),
+    'openrouter'
+  );
+  assert.equal(
+    resolveActiveProvider({
+      primaryProvider: 'deepseek',
+      deepseekApiKey: 'sk-ds-123',
+      openrouterApiKey: 'sk-or-v1-abc',
+    }),
+    'deepseek'
+  );
+});
+
+test('analyzeLeadWithAi uses DeepSeek primary and auto-falls back to OpenRouter Free on 402/429', async () => {
+  const lead = { name: 'Toko Roti Mawar', address: 'Bandung' };
+  const calls = [];
+
+  const mockFetch = async (url) => {
+    calls.push(url);
+    if (url === '/api/ai/deepseek') {
+      return {
+        ok: false,
+        status: 402,
+        json: async () => ({
+          success: false,
+          code: 'INSUFFICIENT_BALANCE',
+          error: 'Saldo DeepSeek habis',
+        }),
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        model: 'google/gemma-3-27b-it:free',
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                leadQualification: 'HOT LEAD',
+                leadScore: 88,
+                opportunityType: 'Website Katalog',
+                digitalPresenceSummary: 'Aktif di Maps tanpa website.',
+                pitchAngle: 'Katalog online mandiri.',
+                pitchDraft: 'Halo Kak Toko Roti Mawar, salam kenal...',
+                followUpDraft: 'Halo Kak, izin follow-up...',
+              }),
+            },
+          },
+        ],
+      }),
+    };
+  };
+
+  const res = await analyzeLeadWithAi(
+    lead,
+    {
+      primaryProvider: 'deepseek',
+      autoFallback: true,
+      deepseekApiKey: 'sk-deepseek-key',
+      openrouterApiKey: 'sk-or-v1-free-key',
+    },
+    { fetchImpl: mockFetch }
+  );
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0], '/api/ai/deepseek');
+  assert.ok(calls[1].includes('openrouter.ai'));
+  assert.equal(res.providerUsed, 'openrouter');
+  assert.equal(res.fallbackFrom, 'deepseek');
+  assert.equal(res.leadQualification, 'HOT LEAD');
 });
 
 test('analyzeLeadWithOpenRouter fails fast on missing API key and surfaces 429 rate-limit clearly', async () => {
   const lead = { name: 'Toko Roti Mawar', address: 'Bandung' };
 
   await assert.rejects(
-    () => analyzeLeadWithOpenRouter(lead, { apiKey: '   ' }),
+    () => analyzeLeadWithOpenRouter(lead, { openrouterApiKey: '   ' }),
     (err) => err.code === 'MISSING_API_KEY' && err.retryable === false
   );
 
@@ -75,10 +156,9 @@ test('analyzeLeadWithOpenRouter fails fast on missing API key and surfaces 429 r
     () =>
       analyzeLeadWithOpenRouter(
         lead,
-        { apiKey: 'sk-or-v1-test', model: 'openai/gpt-4o' },
+        { openrouterApiKey: 'sk-or-v1-test', openrouterModel: 'openai/gpt-4o' },
         { fetchImpl: mock429Fetch }
       ),
     (err) => err.code === 'RATE_LIMITED' && err.status === 429 && err.retryable === true
   );
 });
-

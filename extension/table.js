@@ -62,14 +62,21 @@ let currentFilteredLeads = [];
 let analyzingIndexes = new Set();
 let isBulkRunning = false;
 
-// Default konfigurasi AI & Dashboard
+// Default konfigurasi AI & Dashboard (slot API key terpisah per provider)
 const DEFAULT_AI_CONFIG = {
-  provider: 'openrouter',
+  provider: 'deepseek',
   apiKey: '',
-  model: 'openrouter/free',
+  apiKeys: {
+    deepseek: '',
+    openrouter: '',
+    gemini: ''
+  },
+  model: 'deepseek-chat',
   dashboardUrl: 'http://localhost:3000'
 };
-let currentAiConfig = { ...DEFAULT_AI_CONFIG };
+let currentAiConfig = { ...DEFAULT_AI_CONFIG, apiKeys: { ...DEFAULT_AI_CONFIG.apiKeys } };
+let draftProviderKeys = { ...DEFAULT_AI_CONFIG.apiKeys };
+let lastSelectedModalProvider = 'deepseek';
 
 function resolveDefaultModel(provider) {
   if (provider === 'openrouter') return 'openrouter/free';
@@ -728,11 +735,30 @@ bulkAiBtn.addEventListener('click', async () => {
 
 // AI & Dashboard Settings Modal
 aiSettingsBtn.addEventListener('click', () => {
-  aiProviderSelect.value = currentAiConfig.provider || 'openrouter';
-  aiApiKeyInput.value = currentAiConfig.apiKey || '';
+  const activeProv = currentAiConfig.provider || 'deepseek';
+  draftProviderKeys = {
+    deepseek: '',
+    openrouter: '',
+    gemini: '',
+    ...(currentAiConfig.apiKeys || {})
+  };
+  if (currentAiConfig.apiKey && !draftProviderKeys[activeProv]) {
+    draftProviderKeys[activeProv] = currentAiConfig.apiKey;
+  }
+  lastSelectedModalProvider = activeProv;
+  aiProviderSelect.value = activeProv;
+  aiApiKeyInput.value = draftProviderKeys[activeProv] || '';
   if (dashboardUrlInput) dashboardUrlInput.value = currentAiConfig.dashboardUrl || 'http://localhost:3000';
   aiTestStatus.style.display = 'none';
   aiSettingsModal.hidden = false;
+});
+
+aiProviderSelect.addEventListener('change', () => {
+  draftProviderKeys[lastSelectedModalProvider] = aiApiKeyInput.value.trim();
+  const nextProv = aiProviderSelect.value;
+  lastSelectedModalProvider = nextProv;
+  aiApiKeyInput.value = draftProviderKeys[nextProv] || '';
+  aiTestStatus.style.display = 'none';
 });
 
 aiSettingsCloseBtn.addEventListener('click', () => {
@@ -740,9 +766,13 @@ aiSettingsCloseBtn.addEventListener('click', () => {
 });
 
 aiSaveSettingsBtn.addEventListener('click', async () => {
-  currentAiConfig.provider = aiProviderSelect.value;
-  currentAiConfig.apiKey = aiApiKeyInput.value.trim();
-  currentAiConfig.model = resolveDefaultModel(currentAiConfig.provider);
+  const selectedProv = aiProviderSelect.value;
+  draftProviderKeys[selectedProv] = aiApiKeyInput.value.trim();
+
+  currentAiConfig.provider = selectedProv;
+  currentAiConfig.apiKeys = { ...draftProviderKeys };
+  currentAiConfig.apiKey = draftProviderKeys[selectedProv] || '';
+  currentAiConfig.model = resolveDefaultModel(selectedProv);
   if (dashboardUrlInput) {
     currentAiConfig.dashboardUrl = (dashboardUrlInput.value.trim() || 'http://localhost:3000').replace(/\/+$/, '');
     if (dashboardLinkBtn) dashboardLinkBtn.href = currentAiConfig.dashboardUrl;
@@ -756,6 +786,7 @@ aiSaveSettingsBtn.addEventListener('click', async () => {
 aiTestBtn.addEventListener('click', async () => {
   const provider = aiProviderSelect.value;
   const apiKey = aiApiKeyInput.value.trim();
+  draftProviderKeys[provider] = apiKey;
 
   if (!apiKey) {
     aiTestStatus.style.display = 'block';
@@ -788,7 +819,23 @@ async function load() {
   const { leads = [], aiConfig, tableFilters } = await chrome.storage.local.get(['leads', 'aiConfig', 'tableFilters']);
   
   if (aiConfig) {
-    currentAiConfig = { ...DEFAULT_AI_CONFIG, ...aiConfig };
+    const mergedKeys = {
+      deepseek: '',
+      openrouter: '',
+      gemini: '',
+      ...(aiConfig.apiKeys || {})
+    };
+    const prov = aiConfig.provider || 'deepseek';
+    if (aiConfig.apiKey && !mergedKeys[prov]) {
+      mergedKeys[prov] = aiConfig.apiKey;
+    }
+    currentAiConfig = {
+      ...DEFAULT_AI_CONFIG,
+      ...aiConfig,
+      provider: prov,
+      apiKeys: mergedKeys,
+      apiKey: mergedKeys[prov] || ''
+    };
   } else {
     await chrome.storage.local.set({ aiConfig: DEFAULT_AI_CONFIG });
   }

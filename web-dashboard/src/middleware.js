@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 
-const PROTECTED_API_PATHS = ['/api/delete', '/api/delete-all', '/api/leads/ai'];
+const PROTECTED_API_PATHS = [
+  '/api/delete',
+  '/api/delete-all',
+  '/api/leads/ai',
+  '/api/ai/deepseek',
+];
 
 export function middleware(request) {
   const path = request.nextUrl.pathname;

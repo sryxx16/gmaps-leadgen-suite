@@ -1,9 +1,25 @@
-// Rationale: Native fetch client for OpenRouter Free Models avoids heavy SDK bundle overhead; upgrade to server queue if multi-tenant billing is introduced.
+// Rationale: Unified BYOK multi-provider router (DeepSeek primary via server CORS proxy + OpenRouter zero-cost direct browser fallback) without external SDK bloat.
 
 export const OPENROUTER_CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions';
 export const OPENROUTER_MODELS_URL = 'https://openrouter.ai/api/v1/models';
+export const DEEPSEEK_PROXY_URL = '/api/ai/deepseek';
+
 export const DEFAULT_OPENROUTER_MODEL = 'openrouter/free';
-export const AI_SETTINGS_STORAGE_KEY = 'gmaps_leadgen_openrouter_v1';
+export const DEFAULT_DEEPSEEK_MODEL = 'deepseek-chat';
+
+export const AI_SETTINGS_STORAGE_KEY = 'gmaps_leadgen_ai_settings_v2';
+const LEGACY_OPENROUTER_STORAGE_KEY = 'gmaps_leadgen_openrouter_v1';
+
+export const DEEPSEEK_MODELS = [
+  {
+    id: 'deepseek-chat',
+    name: 'DeepSeek V3 (deepseek-chat — Cepat & JSON Stabil)',
+  },
+  {
+    id: 'deepseek-reasoner',
+    name: 'DeepSeek R1 (deepseek-reasoner — Deep Thinking)',
+  },
+];
 
 export const FALLBACK_FREE_MODELS = [
   {
@@ -23,7 +39,7 @@ export const FALLBACK_FREE_MODELS = [
   },
   {
     id: 'deepseek/deepseek-chat-v3-0324:free',
-    name: 'DeepSeek: Chat V3 (Free)',
+    name: 'DeepSeek: Chat V3 via OpenRouter (Free)',
     contextLength: 128000,
   },
   {
@@ -34,20 +50,28 @@ export const FALLBACK_FREE_MODELS = [
 ];
 
 export const DEFAULT_AI_SETTINGS = {
-  apiKey: '',
-  model: DEFAULT_OPENROUTER_MODEL,
+  primaryProvider: 'deepseek', // 'deepseek' | 'openrouter'
+  autoFallback: true,
+  deepseekApiKey: '',
+  deepseekModel: DEFAULT_DEEPSEEK_MODEL,
+  openrouterApiKey: '',
+  openrouterModel: DEFAULT_OPENROUTER_MODEL,
   agencyName: 'Tim Web Developer',
   serviceFocus: 'Pembuatan Website Katalog, Company Profile & Landing Page SEO Lokal',
   pitchTone: 'casual', // 'casual' | 'formal' | 'consultative'
 };
 
 export class OpenRouterClientError extends Error {
-  constructor(message, { code = 'OPENROUTER_ERROR', status = 0, retryable = false } = {}) {
+  constructor(
+    message,
+    { code = 'AI_CLIENT_ERROR', status = 0, retryable = false, provider = '' } = {}
+  ) {
     super(message);
     this.name = 'OpenRouterClientError';
     this.code = code;
     this.status = status;
     this.retryable = retryable;
+    this.provider = provider;
   }
 }
 
@@ -70,6 +94,11 @@ export function ensureFreeModelId(modelId) {
     return clean;
   }
   return DEFAULT_OPENROUTER_MODEL;
+}
+
+export function ensureDeepSeekModelId(modelId) {
+  const clean = typeof modelId === 'string' ? modelId.trim() : '';
+  return clean === 'deepseek-reasoner' ? 'deepseek-reasoner' : DEFAULT_DEEPSEEK_MODEL;
 }
 
 export function filterFreeModels(rawModels = []) {
@@ -183,11 +212,11 @@ function extractFirstJsonObject(text) {
   return null;
 }
 
-export function parseAiResearchResponse(rawContent, modelUsed = DEFAULT_OPENROUTER_MODEL) {
+export function parseAiResearchResponse(rawContent, modelUsed = DEFAULT_DEEPSEEK_MODEL) {
   const jsonStr = extractFirstJsonObject(rawContent);
   if (!jsonStr) {
     throw new OpenRouterClientError(
-      `Model (${modelUsed}) tidak mengembalikan format JSON yang valid. Coba ulangi atau gunakan Auto-Router.`,
+      `Model (${modelUsed}) tidak mengembalikan format JSON yang valid. Coba analisis ulang.`,
       { code: 'INVALID_AI_JSON', retryable: true }
     );
   }
@@ -234,7 +263,7 @@ export function parseAiResearchResponse(rawContent, modelUsed = DEFAULT_OPENROUT
     pitchAngle: String(parsed.pitchAngle || '').trim(),
     pitchDraft,
     followUpDraft: String(parsed.followUpDraft || '').trim(),
-    modelUsed: String(modelUsed || DEFAULT_OPENROUTER_MODEL).trim(),
+    modelUsed: String(modelUsed || DEFAULT_DEEPSEEK_MODEL).trim(),
     analyzedAt: new Date().toISOString(),
   };
 }
@@ -247,18 +276,19 @@ function buildLeadPrompt(lead, settings) {
         ? 'konsultatif, berbasis data ulasan/jejak digital, memberi insight singkat sebelum menawarkan solusi'
         : 'ramah, natural ala chat WhatsApp Indonesia (sapaan Kak/Bapak/Ibu), singkat, tidak kaku seperti robot spam';
 
+  // Literal word "json" included intentionally to satisfy DeepSeek strict JSON Output mode requirement.
   const systemPrompt = `Kamu adalah B2B Lead Qualification & Cold Outreach Specialist untuk "${settings.agencyName || DEFAULT_AI_SETTINGS.agencyName}".
 Layanan utama yang ditawarkan: ${settings.serviceFocus || DEFAULT_AI_SETTINGS.serviceFocus}.
 Gaya bahasa pesan: ${toneGuide}.
 
-Tugasmu menganalisis data prospek bisnis dari Google Maps dan menghasilkan penilaian prospek + pesan pendekatan WhatsApp yang sangat relevan dengan kondisi nyata bisnis tersebut.
+Tugasmu menganalisis data prospek bisnis dari Google Maps dan menghasilkan output dalam format json yang valid.
 
 Aturan penilaian objektif:
 - HOT LEAD (skor 75-100): Bisnis aktif (ulasan cukup ramai / rating bagus / aktif di Shopee/Tokopedia/Instagram) TETAPI belum punya website resmi, serta punya nomor kontak.
 - WARM LEAD (skor 45-74): Bisnis belum punya website namun ulasan masih sedikit, ATAU sudah punya website sederhana yang berpotensi ditawarkan redesign/SEO/landing page promosi.
 - COLD LEAD (skor 0-44): Sudah punya website korporat matang dan tidak ada celah penawaran jelas, atau data sangat minim tanpa sinyal aktivitas.
 
-Wajib balas HANYA dalam JSON objek murni tanpa teks pengantar dan tanpa markdown backticks:
+Wajib balas HANYA dalam json objek murni sesuai struktur berikut tanpa markdown backticks:
 {
   "leadQualification": "HOT LEAD" | "WARM LEAD" | "COLD LEAD",
   "leadScore": 85,
@@ -269,7 +299,7 @@ Wajib balas HANYA dalam JSON objek murni tanpa teks pengantar dan tanpa markdown
   "followUpDraft": "Pesan follow-up singkat hari ke-3 (1-2 kalimat sopan) jika pesan pertama belum dibalas."
 }`;
 
-  const userPrompt = `Data Prospek Google Maps:
+  const userPrompt = `Analisis data prospek berikut dan kembalikan hasil dalam json:
 - Nama Bisnis: ${lead.name || '-'}
 - Kategori: ${lead.categoryName || lead.category || 'Bisnis Lokal'}
 - Alamat: ${lead.address || '-'}
@@ -282,22 +312,109 @@ Wajib balas HANYA dalam JSON objek murni tanpa teks pengantar dan tanpa markdown
   return { systemPrompt, userPrompt };
 }
 
+export async function analyzeLeadWithDeepSeek(
+  lead,
+  rawSettings = {},
+  { signal, fetchImpl = globalThis.fetch, timeoutMs = 45000 } = {}
+) {
+  const settings = { ...DEFAULT_AI_SETTINGS, ...rawSettings };
+  const apiKey = String(settings.deepseekApiKey || settings.apiKey || '').trim();
+
+  if (!apiKey) {
+    throw new OpenRouterClientError(
+      'API Key DeepSeek belum diisi. Buka Pengaturan AI untuk memasukkan key DeepSeek Anda.',
+      { code: 'MISSING_API_KEY', status: 400, retryable: false, provider: 'deepseek' }
+    );
+  }
+
+  const selectedModel = ensureDeepSeekModelId(settings.deepseekModel);
+  const { systemPrompt, userPrompt } = buildLeadPrompt(lead, settings);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const onAbort = () => controller.abort();
+  if (signal) signal.addEventListener('abort', onAbort, { once: true });
+
+  try {
+    const res = await fetchImpl(DEEPSEEK_PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        apiKey,
+        model: selectedModel,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      }),
+      signal: controller.signal,
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.success) {
+      const status = res.status || 500;
+      const code =
+        data?.code ||
+        (status === 401
+          ? 'UNAUTHORIZED'
+          : status === 402
+            ? 'INSUFFICIENT_BALANCE'
+            : status === 429
+              ? 'RATE_LIMITED'
+              : 'UPSTREAM_ERROR');
+
+      const retryableOnFallback =
+        status === 402 || status === 429 || status >= 500 || code === 'TIMEOUT';
+
+      throw new OpenRouterClientError(
+        data?.error || `DeepSeek gagal merespons (${status}).`,
+        { code, status, retryable: retryableOnFallback, provider: 'deepseek' }
+      );
+    }
+
+    const modelLabel = `deepseek/${data.model || selectedModel}`;
+    return parseAiResearchResponse(data.content || '', modelLabel);
+  } catch (err) {
+    if (err instanceof OpenRouterClientError) throw err;
+    if (err?.name === 'AbortError') {
+      throw new OpenRouterClientError(
+        signal?.aborted
+          ? 'Proses analisis AI dibatalkan.'
+          : 'Permintaan ke DeepSeek melebihi batas waktu (45 detik).',
+        {
+          code: signal?.aborted ? 'ABORTED' : 'TIMEOUT',
+          retryable: !signal?.aborted,
+          provider: 'deepseek',
+        }
+      );
+    }
+    throw new OpenRouterClientError(
+      `Gagal terhubung ke endpoint DeepSeek: ${err?.message || 'Periksa jaringan Anda.'}`,
+      { code: 'NETWORK_ERROR', retryable: true, provider: 'deepseek' }
+    );
+  } finally {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener('abort', onAbort);
+  }
+}
+
 export async function analyzeLeadWithOpenRouter(
   lead,
   rawSettings = {},
   { signal, fetchImpl = globalThis.fetch, timeoutMs = 35000 } = {}
 ) {
   const settings = { ...DEFAULT_AI_SETTINGS, ...rawSettings };
-  const apiKey = (settings.apiKey || '').trim();
+  const apiKey = String(settings.openrouterApiKey || settings.apiKey || '').trim();
 
   if (!apiKey) {
     throw new OpenRouterClientError(
       'API Key OpenRouter belum diisi. Buka Pengaturan AI untuk memasukkan key gratis Anda.',
-      { code: 'MISSING_API_KEY', status: 400, retryable: false }
+      { code: 'MISSING_API_KEY', status: 400, retryable: false, provider: 'openrouter' }
     );
   }
 
-  const selectedModel = ensureFreeModelId(settings.model);
+  const selectedModel = ensureFreeModelId(settings.openrouterModel || settings.model);
   const { systemPrompt, userPrompt } = buildLeadPrompt(lead, settings);
 
   const controller = new AbortController();
@@ -341,25 +458,30 @@ export async function analyzeLeadWithOpenRouter(
 
       if (res.status === 401) {
         throw new OpenRouterClientError(
-          'API Key OpenRouter tidak valid atau sudah kadaluarsa (401). Periksa kembali key Anda.',
-          { code: 'UNAUTHORIZED', status: 401, retryable: false }
+          'API Key OpenRouter tidak valid atau sudah kadaluarsa (401).',
+          { code: 'UNAUTHORIZED', status: 401, retryable: false, provider: 'openrouter' }
         );
       }
       if (res.status === 402) {
         throw new OpenRouterClientError(
-          'Batas penggunaan akun gratis OpenRouter tercapai (402). Pastikan menggunakan model :free.',
-          { code: 'PAYMENT_REQUIRED', status: 402, retryable: false }
+          'Batas penggunaan akun gratis OpenRouter tercapai (402).',
+          { code: 'PAYMENT_REQUIRED', status: 402, retryable: true, provider: 'openrouter' }
         );
       }
       if (res.status === 429) {
         throw new OpenRouterClientError(
-          'Rate limit model gratis tercapai (maks ~20 req/menit). Tunggu beberapa detik atau gunakan Auto-Router.',
-          { code: 'RATE_LIMITED', status: 429, retryable: true }
+          'Rate limit model gratis OpenRouter tercapai (~20 req/menit).',
+          { code: 'RATE_LIMITED', status: 429, retryable: true, provider: 'openrouter' }
         );
       }
       throw new OpenRouterClientError(
         `OpenRouter gagal merespons (${res.status})${detail ? `: ${detail.slice(0, 160)}` : '.'}`,
-        { code: 'UPSTREAM_ERROR', status: res.status, retryable: res.status >= 500 }
+        {
+          code: 'UPSTREAM_ERROR',
+          status: res.status,
+          retryable: res.status >= 500,
+          provider: 'openrouter',
+        }
       );
     }
 
@@ -374,13 +496,17 @@ export async function analyzeLeadWithOpenRouter(
       throw new OpenRouterClientError(
         signal?.aborted
           ? 'Proses analisis AI dibatalkan.'
-          : 'Permintaan ke OpenRouter melebihi batas waktu (35 detik). Coba lagi atau ganti model.',
-        { code: signal?.aborted ? 'ABORTED' : 'TIMEOUT', retryable: !signal?.aborted }
+          : 'Permintaan ke OpenRouter melebihi batas waktu (35 detik).',
+        {
+          code: signal?.aborted ? 'ABORTED' : 'TIMEOUT',
+          retryable: !signal?.aborted,
+          provider: 'openrouter',
+        }
       );
     }
     throw new OpenRouterClientError(
       `Gagal terhubung ke OpenRouter: ${err?.message || 'Periksa koneksi internet Anda.'}`,
-      { code: 'NETWORK_ERROR', retryable: true }
+      { code: 'NETWORK_ERROR', retryable: true, provider: 'openrouter' }
     );
   } finally {
     clearTimeout(timer);
@@ -388,7 +514,73 @@ export async function analyzeLeadWithOpenRouter(
   }
 }
 
-export async function testOpenRouterConnection(rawSettings = {}, options = {}) {
+export function resolveActiveProvider(rawSettings = {}) {
+  const settings = { ...DEFAULT_AI_SETTINGS, ...rawSettings };
+  const hasDeepSeek = Boolean(settings.deepseekApiKey?.trim());
+  const hasOpenRouter = Boolean(settings.openrouterApiKey?.trim());
+  const preferred = settings.primaryProvider === 'openrouter' ? 'openrouter' : 'deepseek';
+
+  if (preferred === 'deepseek') {
+    if (hasDeepSeek) return 'deepseek';
+    if (hasOpenRouter) return 'openrouter';
+    return 'deepseek';
+  }
+
+  if (hasOpenRouter) return 'openrouter';
+  if (hasDeepSeek) return 'deepseek';
+  return 'openrouter';
+}
+
+export async function analyzeLeadWithAi(lead, rawSettings = {}, options = {}) {
+  const settings = { ...DEFAULT_AI_SETTINGS, ...rawSettings };
+  const hasDeepSeek = Boolean(settings.deepseekApiKey?.trim());
+  const hasOpenRouter = Boolean(settings.openrouterApiKey?.trim());
+
+  if (!hasDeepSeek && !hasOpenRouter) {
+    throw new OpenRouterClientError(
+      'Belum ada API Key AI yang diisi. Buka Pengaturan AI lalu masukkan API Key DeepSeek atau OpenRouter.',
+      { code: 'MISSING_API_KEY', status: 400, retryable: false }
+    );
+  }
+
+  const activePrimary = resolveActiveProvider(settings);
+  const secondary = activePrimary === 'deepseek' ? 'openrouter' : 'deepseek';
+  const secondaryReady = secondary === 'deepseek' ? hasDeepSeek : hasOpenRouter;
+
+  const runForProvider = (providerName) =>
+    providerName === 'deepseek'
+      ? analyzeLeadWithDeepSeek(lead, settings, options)
+      : analyzeLeadWithOpenRouter(lead, settings, options);
+
+  try {
+    const result = await runForProvider(activePrimary);
+    return {
+      ...result,
+      providerUsed: activePrimary,
+      fallbackFrom: null,
+    };
+  } catch (primaryErr) {
+    if (primaryErr?.code === 'ABORTED') throw primaryErr;
+
+    const canFallback =
+      Boolean(settings.autoFallback) &&
+      secondaryReady &&
+      Boolean(primaryErr?.retryable);
+
+    if (!canFallback) {
+      throw primaryErr;
+    }
+
+    const fallbackResult = await runForProvider(secondary);
+    return {
+      ...fallbackResult,
+      providerUsed: secondary,
+      fallbackFrom: activePrimary,
+    };
+  }
+}
+
+export async function testAiProviderConnection(provider, rawSettings = {}, options = {}) {
   const start = Date.now();
   const sampleLead = {
     name: 'Kopi Senja Nusantara',
@@ -402,9 +594,14 @@ export async function testOpenRouterConnection(rawSettings = {}, options = {}) {
     phone: '081234567890',
   };
 
-  const result = await analyzeLeadWithOpenRouter(sampleLead, rawSettings, options);
+  const result =
+    provider === 'deepseek'
+      ? await analyzeLeadWithDeepSeek(sampleLead, rawSettings, options)
+      : await analyzeLeadWithOpenRouter(sampleLead, rawSettings, options);
+
   return {
     ok: true,
+    provider,
     latencyMs: Date.now() - start,
     modelUsed: result.modelUsed,
     qualification: result.leadQualification,
@@ -414,6 +611,23 @@ export async function testOpenRouterConnection(rawSettings = {}, options = {}) {
 let cachedSettingsRaw = null;
 let cachedSettingsObj = DEFAULT_AI_SETTINGS;
 const settingsListeners = new Set();
+
+function normalizeSettingsObject(parsed = {}) {
+  return {
+    ...DEFAULT_AI_SETTINGS,
+    primaryProvider: parsed.primaryProvider === 'openrouter' ? 'openrouter' : 'deepseek',
+    autoFallback: typeof parsed.autoFallback === 'boolean' ? parsed.autoFallback : true,
+    deepseekApiKey: String(parsed.deepseekApiKey || '').trim(),
+    deepseekModel: ensureDeepSeekModelId(parsed.deepseekModel),
+    openrouterApiKey: String(parsed.openrouterApiKey || parsed.apiKey || '').trim(),
+    openrouterModel: ensureFreeModelId(parsed.openrouterModel || parsed.model),
+    agencyName: String(parsed.agencyName ?? DEFAULT_AI_SETTINGS.agencyName),
+    serviceFocus: String(parsed.serviceFocus ?? DEFAULT_AI_SETTINGS.serviceFocus),
+    pitchTone: ['casual', 'consultative', 'formal'].includes(parsed.pitchTone)
+      ? parsed.pitchTone
+      : 'casual',
+  };
+}
 
 export function subscribeAiSettings(listener) {
   settingsListeners.add(listener);
@@ -437,7 +651,16 @@ export function getServerAiSettingsSnapshot() {
 export function loadAiSettings() {
   if (typeof window === 'undefined') return DEFAULT_AI_SETTINGS;
   try {
-    const raw = window.localStorage.getItem(AI_SETTINGS_STORAGE_KEY);
+    let raw = window.localStorage.getItem(AI_SETTINGS_STORAGE_KEY);
+    if (!raw) {
+      const legacyRaw = window.localStorage.getItem(LEGACY_OPENROUTER_STORAGE_KEY);
+      if (legacyRaw) {
+        const migrated = normalizeSettingsObject(JSON.parse(legacyRaw));
+        raw = JSON.stringify(migrated);
+        window.localStorage.setItem(AI_SETTINGS_STORAGE_KEY, raw);
+      }
+    }
+
     if (raw === cachedSettingsRaw && cachedSettingsObj) {
       return cachedSettingsObj;
     }
@@ -446,12 +669,7 @@ export function loadAiSettings() {
       cachedSettingsObj = DEFAULT_AI_SETTINGS;
       return cachedSettingsObj;
     }
-    const parsed = JSON.parse(raw);
-    cachedSettingsObj = {
-      ...DEFAULT_AI_SETTINGS,
-      ...parsed,
-      model: ensureFreeModelId(parsed?.model),
-    };
+    cachedSettingsObj = normalizeSettingsObject(JSON.parse(raw));
     return cachedSettingsObj;
   } catch {
     return DEFAULT_AI_SETTINGS;
@@ -459,12 +677,7 @@ export function loadAiSettings() {
 }
 
 export function saveAiSettings(nextSettings) {
-  const merged = {
-    ...DEFAULT_AI_SETTINGS,
-    ...nextSettings,
-    apiKey: String(nextSettings?.apiKey || '').trim(),
-    model: ensureFreeModelId(nextSettings?.model),
-  };
+  const merged = normalizeSettingsObject(nextSettings);
   if (typeof window !== 'undefined') {
     const serialized = JSON.stringify(merged);
     window.localStorage.setItem(AI_SETTINGS_STORAGE_KEY, serialized);
