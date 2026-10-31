@@ -26,7 +26,7 @@
       <button id="exportCsvBtn" class="secondary">Export CSV</button>
       <button id="exportJsonBtn" class="secondary">Export JSON</button>
       <button id="syncDashboardBtn" class="secondary">Sinkron ke Dashboard</button>
-      <a href="http://localhost:3000" target="_blank" rel="noopener noreferrer" class="btn-dashboard-link">Buka Web Dashboard ↗</a>
+      <a href="http://localhost:3000" id="dashboardLinkBtn" target="_blank" rel="noopener noreferrer" class="btn-dashboard-link">Buka Web Dashboard ↗</a>
       <button id="addManualBtn" class="secondary">+ Tambah Manual</button>
       <button id="aiSettingsBtn" class="secondary">Pengaturan AI</button>
       <button id="clearBtn" class="danger">Hapus Semua</button>
@@ -136,6 +136,9 @@
 
         <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:4px;">API Key:</label>
         <input type="password" id="aiApiKeyInput" placeholder="sk-..." style="width:100%;padding:8px;border-radius:6px;border:1px solid #cbd5e1;margin-bottom:12px;font-family:monospace;" />
+
+        <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:4px;">URL Web Dashboard (Local / Vercel):</label>
+        <input type="url" id="dashboardUrlInput" placeholder="http://localhost:3000 atau https://xxx.vercel.app" style="width:100%;padding:8px;border-radius:6px;border:1px solid #cbd5e1;margin-bottom:12px;font-size:12px;" />
 
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;">
           <button id="aiTestBtn" class="secondary">Test Koneksi</button>

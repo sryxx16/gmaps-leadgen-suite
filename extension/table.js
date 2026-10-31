@@ -39,6 +39,8 @@ const aiSettingsModal = document.getElementById('aiSettingsModal');
 const aiSettingsCloseBtn = document.getElementById('aiSettingsCloseBtn');
 const aiProviderSelect = document.getElementById('aiProviderSelect');
 const aiApiKeyInput = document.getElementById('aiApiKeyInput');
+const dashboardUrlInput = document.getElementById('dashboardUrlInput');
+const dashboardLinkBtn = document.getElementById('dashboardLinkBtn');
 const aiSaveSettingsBtn = document.getElementById('aiSaveSettingsBtn');
 const aiTestBtn = document.getElementById('aiTestBtn');
 const aiTestStatus = document.getElementById('aiTestStatus');
@@ -60,11 +62,12 @@ let currentFilteredLeads = [];
 let analyzingIndexes = new Set();
 let isBulkRunning = false;
 
-// Default konfigurasi AI
+// Default konfigurasi AI & Dashboard
 const DEFAULT_AI_CONFIG = {
   provider: 'deepseek',
   apiKey: 'sk-34bfff0ba1494b3fa81e494b7b2535d1',
-  model: 'deepseek-chat'
+  model: 'deepseek-chat',
+  dashboardUrl: 'http://localhost:3000'
 };
 let currentAiConfig = { ...DEFAULT_AI_CONFIG };
 
@@ -677,10 +680,11 @@ bulkAiBtn.addEventListener('click', async () => {
   }, 5000);
 });
 
-// AI Settings Modal
+// AI & Dashboard Settings Modal
 aiSettingsBtn.addEventListener('click', () => {
   aiProviderSelect.value = currentAiConfig.provider || 'deepseek';
   aiApiKeyInput.value = currentAiConfig.apiKey || '';
+  if (dashboardUrlInput) dashboardUrlInput.value = currentAiConfig.dashboardUrl || 'http://localhost:3000';
   aiTestStatus.style.display = 'none';
   aiSettingsModal.hidden = false;
 });
@@ -693,9 +697,13 @@ aiSaveSettingsBtn.addEventListener('click', async () => {
   currentAiConfig.provider = aiProviderSelect.value;
   currentAiConfig.apiKey = aiApiKeyInput.value.trim();
   currentAiConfig.model = currentAiConfig.provider === 'deepseek' ? 'deepseek-chat' : 'gemini-1.5-flash';
+  if (dashboardUrlInput) {
+    currentAiConfig.dashboardUrl = (dashboardUrlInput.value.trim() || 'http://localhost:3000').replace(/\/+$/, '');
+    if (dashboardLinkBtn) dashboardLinkBtn.href = currentAiConfig.dashboardUrl;
+  }
 
   await chrome.storage.local.set({ aiConfig: currentAiConfig });
-  alert('Pengaturan AI berhasil disimpan!');
+  alert('Pengaturan berhasil disimpan!');
   aiSettingsModal.hidden = true;
 });
 
@@ -737,6 +745,10 @@ async function load() {
     currentAiConfig = { ...DEFAULT_AI_CONFIG, ...aiConfig };
   } else {
     await chrome.storage.local.set({ aiConfig: DEFAULT_AI_CONFIG });
+  }
+
+  if (dashboardLinkBtn && currentAiConfig.dashboardUrl) {
+    dashboardLinkBtn.href = currentAiConfig.dashboardUrl;
   }
 
   // Ingat preferensi filter pengguna
@@ -878,9 +890,11 @@ syncDashboardBtn.addEventListener('click', async () => {
   syncStatus.style.color = '#0369a1';
   syncStatus.textContent = '⏳ Sedang mengirim data ke Web Dashboard...';
 
+  const targetBase = (currentAiConfig.dashboardUrl || 'http://localhost:3000').replace(/\/+$/, '');
+  const targetUrl = `${targetBase}/api/import`;
+
   try {
-    // Coba endpoint standar /api/import (Next.js dashboard)
-    const res = await fetch('http://localhost:3000/api/import', {
+    const res = await fetch(targetUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ data: allLeads })
@@ -897,7 +911,7 @@ syncDashboardBtn.addEventListener('click', async () => {
   } catch (err) {
     syncStatus.style.background = '#fee2e2';
     syncStatus.style.color = '#b91c1c';
-    syncStatus.textContent = `⚠️ Gagal sinkron ke localhost:3000 (${err.message}). Pastikan server dashboard menyala.`;
+    syncStatus.textContent = `⚠️ Gagal sinkron ke ${targetBase} (${err.message}). Pastikan server dashboard menyala.`;
   }
 
   setTimeout(() => {
