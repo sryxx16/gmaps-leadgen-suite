@@ -3,7 +3,9 @@ import { openDb } from '@/lib/db';
 
 export async function POST(request) {
   try {
-    const { data, categoryName } = await request.json();
+    const body = await request.json();
+    const data = body.data || body.leads || [];
+    const categoryName = body.categoryName || null;
     const sql = await openDb();
 
     // 1. Dapatkan atau buat kategori jika diisi manual
@@ -19,23 +21,27 @@ export async function POST(request) {
       }
     }
 
-    // 2. Insert leads
+    // 2. Insert or update leads
     let insertedCount = 0;
+    let updatedCount = 0;
     
     for (const lead of data) {
       const finalCategoryName = categoryName || lead.category;
       let finalCatId = manualCatId;
       
       if (!categoryName && finalCategoryName) {
-         let c = await sql`SELECT id FROM "Category" WHERE name = ${finalCategoryName}`;
-           
-         if (c.length === 0) {
-           const res = await sql`INSERT INTO "Category" (name) VALUES (${finalCategoryName}) RETURNING id`;
-           finalCatId = res[0].id;
-         } else {
-           finalCatId = c[0].id;
-         }
+        let c = await sql`SELECT id FROM "Category" WHERE name = ${finalCategoryName}`;
+        if (c.length === 0) {
+          const res = await sql`INSERT INTO "Category" (name) VALUES (${finalCategoryName}) RETURNING id`;
+          finalCatId = res[0].id;
+        } else {
+          finalCatId = c[0].id;
+        }
       }
+
+      const aiResearchJson = lead.aiResearch 
+        ? (typeof lead.aiResearch === 'string' ? lead.aiResearch : JSON.stringify(lead.aiResearch))
+        : null;
 
       // Cek apakah data sudah ada (mencegah duplikat berdasarkan nama dan alamat)
       const existing = await sql`
@@ -43,28 +49,67 @@ export async function POST(request) {
         WHERE name = ${lead.name} AND address = ${lead.address || ''} 
         LIMIT 1
       `;
-      if (existing.length > 0) {
-        continue; // Skip kalau data udah ada di database
-      }
 
-      await sql`
-        INSERT INTO "Lead" (name, address, phone, website, "mapsUrl", "scrapedAt", "categoryId", rating, "reviewCount")
-        VALUES (
-          ${lead.name}, 
-          ${lead.address || ''}, 
-          ${lead.phone || ''}, 
-          ${lead.website || ''}, 
-          ${lead.mapsUrl || ''}, 
-          ${lead.scrapedAt || new Date().toISOString()}, 
-          ${finalCatId},
-          ${lead.rating || ''},
-          ${lead.reviewCount || ''}
-        )
-      `;
-      insertedCount++;
+      if (existing.length > 0) {
+        // Update existing lead dengan data terbaru dari ekstensi
+        await sql`
+          UPDATE "Lead"
+          SET 
+            phone = COALESCE(NULLIF(${lead.phone || ''}, ''), phone),
+            whatsapp = COALESCE(NULLIF(${lead.whatsapp || ''}, ''), whatsapp),
+            website = ${lead.website || ''},
+            "socialMedia" = COALESCE(NULLIF(${lead.socialMedia || ''}, ''), "socialMedia"),
+            "onlineShop" = COALESCE(NULLIF(${lead.onlineShop || ''}, ''), "onlineShop"),
+            "aiResearch" = COALESCE(${aiResearchJson}::jsonb, "aiResearch"),
+            rating = COALESCE(NULLIF(${lead.rating || ''}, ''), rating),
+            "reviewCount" = COALESCE(NULLIF(${lead.reviewCount || ''}, ''), "reviewCount"),
+            "mapsUrl" = COALESCE(NULLIF(${lead.mapsUrl || ''}, ''), "mapsUrl")
+          WHERE id = ${existing[0].id}
+        `;
+        updatedCount++;
+      } else {
+        await sql`
+          INSERT INTO "Lead" (
+            name, 
+            address, 
+            phone, 
+            whatsapp,
+            website, 
+            "socialMedia",
+            "onlineShop",
+            "aiResearch",
+            "mapsUrl", 
+            "scrapedAt", 
+            "categoryId", 
+            rating, 
+            "reviewCount"
+          )
+          VALUES (
+            ${lead.name}, 
+            ${lead.address || ''}, 
+            ${lead.phone || ''}, 
+            ${lead.whatsapp || ''},
+            ${lead.website || ''}, 
+            ${lead.socialMedia || ''},
+            ${lead.onlineShop || ''},
+            ${aiResearchJson}::jsonb,
+            ${lead.mapsUrl || ''}, 
+            ${lead.scrapedAt || new Date().toISOString()}, 
+            ${finalCatId},
+            ${lead.rating || ''},
+            ${lead.reviewCount || ''}
+          )
+        `;
+        insertedCount++;
+      }
     }
 
-    return NextResponse.json({ success: true, inserted: insertedCount });
+    return NextResponse.json({ 
+      success: true, 
+      inserted: insertedCount,
+      updated: updatedCount,
+      total: insertedCount + updatedCount 
+    });
   } catch (error) {
     console.error('Import error:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

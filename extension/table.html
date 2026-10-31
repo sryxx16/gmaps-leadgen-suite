@@ -8,28 +8,41 @@
 <body>
   <header>
     <div class="title-block">
-      <h1>Daftar Calon Client</h1>
-      <p id="summary" class="summary">0 data</p>
+      <div>
+        <h1>GMaps Lead Finder</h1>
+        <p id="summary" class="summary">0 data tersimpan</p>
+      </div>
+      <div class="header-badges">
+        <span id="storageBadge" class="storage-badge">Tersimpan di Storage</span>
+      </div>
     </div>
     <div class="toolbar">
-      <input type="search" id="search" placeholder="Cari nama / alamat..." />
+      <input type="search" id="search" placeholder="Cari nama, alamat, atau kategori..." />
       <label class="toggle">
-        <input type="checkbox" id="onlyNoWebsite" checked />
+        <input type="checkbox" id="onlyNoWebsite" />
         Cuma yang belum punya website
       </label>
+      <button id="bulkAiBtn" class="ai-bulk-btn">Riset AI Semua</button>
       <button id="exportCsvBtn" class="secondary">Export CSV</button>
       <button id="exportJsonBtn" class="secondary">Export JSON</button>
-      <button id="addManualBtn" class="secondary">+ Tambah manual</button>
-      <button id="clearBtn" class="danger">Hapus semua</button>
+      <button id="syncDashboardBtn" class="secondary">Sinkron ke Dashboard</button>
+      <a href="http://localhost:3000" target="_blank" rel="noopener noreferrer" class="btn-dashboard-link">Buka Web Dashboard ↗</a>
+      <button id="addManualBtn" class="secondary">+ Tambah Manual</button>
+      <button id="aiSettingsBtn" class="secondary">Pengaturan AI</button>
+      <button id="clearBtn" class="danger">Hapus Semua</button>
     </div>
+    <div id="syncStatus" style="display:none;margin-top:10px;padding:8px 14px;border-radius:6px;font-size:13px;"></div>
+    <div id="aiProgressStatus" style="display:none;margin-top:10px;padding:8px 14px;border-radius:6px;font-size:13px;"></div>
   </header>
 
   <div id="manualForm" class="manual-form" hidden>
     <input type="text" id="mName" placeholder="Nama bisnis *" />
-    <input type="text" id="mAddress" placeholder="Alamat" />
+    <input type="text" id="mCategory" placeholder="Kategori (mis. Toko Sepatu)" />
+    <input type="text" id="mRating" placeholder="Rating (mis. 4.5)" />
+    <input type="text" id="mReviews" placeholder="Ulasan (mis. 50)" />
+    <input type="text" id="mAddress" placeholder="Alamat lengkap" />
     <input type="text" id="mPhone" placeholder="Telepon (mis. 0812xxxxxxx)" />
-    <input type="text" id="mCategory" placeholder="Kategori (mis. Toko Sepeda)" />
-    <input type="url" id="mWebsite" placeholder="URL website (kosongkan kalau belum ada)" />
+    <input type="url" id="mWebsite" placeholder="URL website (kosongkan jika belum ada)" />
     <input type="url" id="mMapsUrl" placeholder="Link Google Maps (opsional)" />
     <div class="manual-form-actions">
       <button id="mSaveBtn" class="secondary">Simpan</button>
@@ -41,21 +54,97 @@
     <table id="leadsTable">
       <thead>
         <tr>
-          <th>Nama</th>
-          <th>Kategori</th>
-          <th>Alamat</th>
-          <th>Telepon</th>
-          <th>Website</th>
-          <th>Diambil</th>
+          <th>Nama Bisnis</th>
+          <th>Rating</th>
+          <th>Kategori & Alamat</th>
+          <th>Kontak (WA/Telp)</th>
+          <th>Website Resmi</th>
+          <th>Sosmed / Olshop</th>
+          <th>Riset AI (Browser)</th>
           <th>Aksi</th>
         </tr>
       </thead>
       <tbody id="tbody"></tbody>
     </table>
     <div id="emptyState" class="empty-state" hidden>
-      Belum ada data. Buka Google Maps, cari kategori bisnis, lalu jalankan lewat popup extension.
+      Belum ada data. Buka Google Maps, cari bisnis, lalu jalankan lewat extension.
     </div>
   </main>
+
+  <!-- Modal Detail Riset AI & Pitch WA -->
+  <div id="aiDetailModal" class="modal-overlay" hidden>
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <h2 id="aiModalBizName" style="margin:0;font-size:18px;">Nama Bisnis</h2>
+          <span id="aiModalCategory" style="font-size:12px;color:#64748b;">Kategori</span>
+        </div>
+        <button id="aiModalCloseBtn" class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="aiModalQualification" class="ai-badge-large">Kualifikasi: HOT LEAD</div>
+        
+        <div class="detail-section">
+          <h4>Hasil Riset Jejak Digital</h4>
+          <p id="aiModalSummary" class="detail-text">Ringkasan riset AI...</p>
+        </div>
+
+        <div class="detail-grid">
+          <div class="detail-box">
+            <span class="box-title">Sosial Media</span>
+            <div id="aiModalSocials" class="box-content">-</div>
+          </div>
+          <div class="detail-box">
+            <span class="box-title">Toko Online / Marketplace</span>
+            <div id="aiModalOlshop" class="box-content">-</div>
+          </div>
+          <div class="detail-box">
+            <span class="box-title">Kontak Tambahan / Email</span>
+            <div id="aiModalContacts" class="box-content">-</div>
+          </div>
+          <div class="detail-box">
+            <span class="box-title">Sudut Penawaran (Pitch Angle)</span>
+            <div id="aiModalPitchAngle" class="box-content">-</div>
+          </div>
+        </div>
+
+        <div class="detail-section" style="margin-top:14px;">
+          <h4>Rekomendasi Pesan Penawaran WhatsApp</h4>
+          <textarea id="aiModalPitchText" rows="4" class="pitch-textarea"></textarea>
+          <div style="display:flex;gap:10px;margin-top:8px;">
+            <button id="aiModalCopyBtn" class="secondary">Salin Pesan</button>
+            <a id="aiModalWaLink" class="btn-action btn-wa" href="#" target="_blank" rel="noopener">Kirim via WhatsApp</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Pengaturan AI -->
+  <div id="aiSettingsModal" class="modal-overlay" hidden>
+    <div class="modal-card modal-small">
+      <div class="modal-header">
+        <h2 style="margin:0;font-size:16px;">Pengaturan AI Web Research</h2>
+        <button id="aiSettingsCloseBtn" class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body" style="padding-top:10px;">
+        <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:4px;">Provider AI:</label>
+        <select id="aiProviderSelect" style="width:100%;padding:8px;border-radius:6px;border:1px solid #cbd5e1;margin-bottom:12px;">
+          <option value="deepseek">DeepSeek (deepseek-chat)</option>
+          <option value="gemini">Google Gemini (gemini-1.5-flash)</option>
+        </select>
+
+        <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:4px;">API Key:</label>
+        <input type="password" id="aiApiKeyInput" placeholder="sk-..." style="width:100%;padding:8px;border-radius:6px;border:1px solid #cbd5e1;margin-bottom:12px;font-family:monospace;" />
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;">
+          <button id="aiTestBtn" class="secondary">Test Koneksi</button>
+          <button id="aiSaveSettingsBtn" class="primary">Simpan Pengaturan</button>
+        </div>
+        <div id="aiTestStatus" style="font-size:12px;margin-top:10px;display:none;"></div>
+      </div>
+    </div>
+  </div>
 
   <script src="table.js"></script>
 </body>

@@ -1,18 +1,24 @@
 import { openDb } from '@/lib/db';
 import DashboardClient from './DashboardClient';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function Dashboard() {
   const sql = await openDb();
   
-  // Ambil data leads
-  // Kita harus menggunakan tanda kutip ("") untuk nama tabel & kolom yang mengandung huruf besar (Postgres case-sensitive)
+  // Ambil data leads terbaru beserta kolom baru
   const leads = await sql`
     SELECT 
       l.id, 
       l.name, 
       l.address, 
       l.phone, 
+      l.whatsapp,
       l.website, 
+      l."socialMedia",
+      l."onlineShop",
+      l."aiResearch",
       l."mapsUrl", 
       l."scrapedAt", 
       l.rating,

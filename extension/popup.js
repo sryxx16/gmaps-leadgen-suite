@@ -1,3 +1,4 @@
+// popup.js
 const targetInput = document.getElementById('target');
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
@@ -13,22 +14,24 @@ async function getActiveMapsTab() {
   return null;
 }
 
-// Content script cuma nyuntik otomatis kalau tab-nya dimuat SETELAH extension
-// terpasang/di-reload. Kalau tab udah kebuka duluan (atau reload manual gagal
-// ke-detect), PING bakal gagal (nggak ada yang dengerin) — di situ kita suntik
-// manual pakai chrome.scripting, biar user nggak perlu refresh tab sendiri.
+// Pastikan content script aktif di tab Maps (force-inject jika belum ada)
 async function ensureContentScript(tabId) {
   try {
-    await chrome.tabs.sendMessage(tabId, { type: 'PING' });
-    return true;
-  } catch (e) {
-    try {
-      await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
-      await new Promise((r) => setTimeout(r, 150)); // beri waktu script daftar listener
+    const res = await chrome.tabs.sendMessage(tabId, { type: 'PING' });
+    if (res && res.version) {
       return true;
-    } catch (err) {
-      return false;
     }
+  } catch (e) {
+    // Tab belum ada script
+  }
+
+  // Suntikkan script versi baru ke tab
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
+    await new Promise((r) => setTimeout(r, 250));
+    return true;
+  } catch (err) {
+    return false;
   }
 }
 
@@ -38,60 +41,61 @@ function setRunningUI(running) {
   targetInput.disabled = running;
 }
 
-function updateProgress(count, target, status) {
+function updateProgress(count, target, status, businessName = '', newCount = 0) {
   progressWrap.hidden = false;
   const pct = target > 0 ? Math.min(100, Math.round((count / target) * 100)) : 0;
   progressFill.style.width = pct + '%';
   progressLabel.textContent = `${count} / ${target}`;
 
-  const statusText = {
-    jalan: 'Lagi ambil data...',
-    selesai: 'Selesai! Target tercapai.',
-    berhenti: 'Dihentikan manual.',
-    habis: 'Sudah nggak ada hasil baru dari Google Maps untuk diambil.',
-    no_feed: 'Nggak ketemu daftar hasil pencarian. Pastikan lu ada di halaman LIST hasil pencarian (banyak bisnis kelihatan di sidebar), bukan halaman detail satu bisnis. Klik tombol panah kembali (←) di Maps kalau perlu, lalu coba lagi.',
-  }[status] || '';
+  let statusText = '';
+  if (status === 'jalan') {
+    statusText = businessName ? `Proses: ${businessName}` : 'Sedang mengambil data...';
+  } else if (status === 'selesai') {
+    statusText = `Selesai! ${count} toko diproses (${newCount || count} data baru tersimpan).`;
+  } else if (status === 'berhenti') {
+    statusText = `Dihentikan manual pada ${count} data.`;
+  } else if (status === 'habis') {
+    statusText = `Semua hasil pencarian Maps sudah terambil (${count} data).`;
+  } else if (status === 'no_feed') {
+    statusText = 'Belum ada hasil pencarian. Ketik pencarian di Google Maps (misal "toko sepatu depok"), tekan Enter, lalu klik Mulai.';
+  }
 
   if (statusText) statusEl.textContent = statusText;
 
   if (status === 'selesai' || status === 'berhenti' || status === 'habis' || status === 'no_feed') {
     setRunningUI(false);
+  } else if (status === 'jalan') {
+    setRunningUI(true);
   }
 }
 
 startBtn.addEventListener('click', async () => {
   const tab = await getActiveMapsTab();
   if (!tab) {
-    statusEl.textContent = 'Buka tab Google Maps dulu (google.com/maps) dan lakukan pencarian, baru tekan Mulai.';
+    statusEl.textContent = 'Buka tab Google Maps (google.com/maps), cari bisnis, lalu tekan Mulai.';
     return;
   }
 
-  // Deteksi dini: kalau URL-nya /maps/place/... berarti lagi di halaman DETAIL
-  // satu bisnis (biasanya gara-gara klik saran autocomplete pas nyari), bukan
-  // di halaman daftar (/maps/search/...) yang isinya banyak bisnis.
-  if (tab.url.includes('/maps/place/')) {
-    statusEl.textContent = 'Lu lagi di halaman DETAIL satu bisnis, bukan daftar hasil pencarian. Klik panah kembali (←) di sidebar Maps sampai URL-nya berubah jadi .../maps/search/... dan sidebar nampilin banyak bisnis, baru tekan Mulai lagi.';
-    return;
-  }
-
-  statusEl.textContent = 'Menyiapkan...';
+  statusEl.textContent = 'Menghubungkan ke Google Maps...';
   const ready = await ensureContentScript(tab.id);
   if (!ready) {
-    statusEl.textContent = 'Gagal menghubungkan ke tab Maps. Coba refresh tab Maps manual (Ctrl+R), lalu tekan Mulai lagi.';
+    statusEl.textContent = 'Gagal memuat scraper. Refresh tab Maps kamu (F5), lalu tekan Mulai.';
     return;
   }
 
   const target = parseInt(targetInput.value, 10) || 20;
-  setRunningUI(true);
-  statusEl.textContent = 'Memulai...';
-  progressWrap.hidden = false;
-  progressFill.style.width = '0%';
-  progressLabel.textContent = `0 / ${target}`;
 
-  chrome.tabs.sendMessage(tab.id, { type: 'START_SCRAPE', target }, () => {
+  chrome.tabs.sendMessage(tab.id, { type: 'START_SCRAPE', target }, (res) => {
     if (chrome.runtime.lastError) {
-      statusEl.textContent = 'Gagal memulai scraping: ' + chrome.runtime.lastError.message + '. Coba refresh tab Maps.';
+      statusEl.textContent = 'Error: ' + chrome.runtime.lastError.message + '. Silakan refresh tab Maps (F5).';
       setRunningUI(false);
+      return;
+    }
+    setRunningUI(true);
+    if (res && res.alreadyRunning) {
+      updateProgress(res.count, res.target, 'jalan');
+    } else {
+      updateProgress(0, target, 'jalan', 'Memulai...');
     }
   });
 });
@@ -99,34 +103,51 @@ startBtn.addEventListener('click', async () => {
 stopBtn.addEventListener('click', async () => {
   const tab = await getActiveMapsTab();
   if (tab) chrome.tabs.sendMessage(tab.id, { type: 'STOP_SCRAPE' });
-  statusEl.textContent = 'Menghentikan...';
+  statusEl.textContent = 'Menghentikan proses...';
 });
 
 openTableBtn.addEventListener('click', () => {
   chrome.runtime.sendMessage({ type: 'OPEN_TABLE' });
 });
 
+// Listener progress real-time dari content script
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === 'SCRAPE_PROGRESS') {
-    updateProgress(msg.count, msg.target, msg.status);
+    updateProgress(msg.count, msg.target, msg.status, msg.businessName, msg.newCount);
   }
 });
 
-// Saat popup dibuka, cek status berjalan atau tidak, dan tampilkan jumlah data tersimpan.
-(async () => {
-  const { leads = [] } = await chrome.storage.local.get('leads');
-  if (leads.length > 0) {
-    statusEl.textContent = `Ada ${leads.length} data tersimpan. Tekan Mulai buat nambah, atau buka tabel buat lihat hasil.`;
+// Sinkronisasi otomatis dari storage
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.scrapeProgress) {
+    const p = changes.scrapeProgress.newValue;
+    if (p) updateProgress(p.count, p.target, p.status, p.businessName, p.newCount);
   }
+});
+
+// Inisialisasi tampilan saat popup dibuka
+(async () => {
+  const { leads = [], scrapeProgress } = await chrome.storage.local.get(['leads', 'scrapeProgress']);
 
   const tab = await getActiveMapsTab();
   if (tab) {
     chrome.tabs.sendMessage(tab.id, { type: 'GET_STATUS' }, (res) => {
-      if (chrome.runtime.lastError) return; // content script belum siap, biarkan
-      if (res && res.isRunning) {
+      if (!chrome.runtime.lastError && res) {
+        if (res.isRunning) {
+          setRunningUI(true);
+          updateProgress(res.count, res.target, res.status, res.currentBusiness, res.newCount);
+          return;
+        }
+      }
+      
+      if (scrapeProgress && scrapeProgress.status === 'jalan') {
         setRunningUI(true);
-        statusEl.textContent = 'Lagi ambil data...';
+        updateProgress(scrapeProgress.count, scrapeProgress.target, scrapeProgress.status, scrapeProgress.businessName, scrapeProgress.newCount);
+      } else if (leads.length > 0) {
+        statusEl.textContent = `Tersimpan ${leads.length} data bisnis. Tekan Mulai untuk menambah data baru.`;
       }
     });
+  } else if (leads.length > 0) {
+    statusEl.textContent = `Tersimpan ${leads.length} data bisnis. Buka Google Maps untuk mulai scraping.`;
   }
 })();

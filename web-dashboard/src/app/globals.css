@@ -1,6 +1,46 @@
 @import "tailwindcss";
 
-/* Reset default body margins and add clean dark mode background */
+:root {
+  --canvas-bg: #09090b;
+  --card-bg: #121215;
+  --card-border: #27272a;
+}
+
 body {
-  @apply bg-slate-950 text-slate-100 min-h-screen antialiased;
+  background-color: #09090b;
+  color: #f4f4f5;
+  min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom sleek scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #09090b;
+}
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
+
+/* Clean dark card & surface */
+.clean-card {
+  background-color: #121215;
+  border: 1px solid #27272a;
+}
+
+.clean-card:hover {
+  border-color: #3f3f46;
+}
+
+.clean-card-subtle {
+  background-color: #18181b;
+  border: 1px solid #27272a;
 }

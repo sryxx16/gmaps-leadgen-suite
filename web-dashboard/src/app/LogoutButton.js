@@ -17,7 +17,8 @@ export default function LogoutButton() {
   return (
     <button 
       onClick={handleLogout} 
-      className="px-4 py-2 border border-red-900/50 text-red-400 hover:bg-red-950/50 hover:text-red-300 text-sm font-medium rounded-full transition-colors"
+      className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-rose-300 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all"
+      title="Keluar dari sesi dashboard"
     >
       Keluar
     </button>
