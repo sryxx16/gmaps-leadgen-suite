@@ -411,19 +411,50 @@ export async function testOpenRouterConnection(rawSettings = {}, options = {}) {
   };
 }
 
+let cachedSettingsRaw = null;
+let cachedSettingsObj = DEFAULT_AI_SETTINGS;
+const settingsListeners = new Set();
+
+export function subscribeAiSettings(listener) {
+  settingsListeners.add(listener);
+  if (typeof window === 'undefined') {
+    return () => settingsListeners.delete(listener);
+  }
+  const onStorage = (e) => {
+    if (e.key === AI_SETTINGS_STORAGE_KEY) listener();
+  };
+  window.addEventListener('storage', onStorage);
+  return () => {
+    settingsListeners.delete(listener);
+    window.removeEventListener('storage', onStorage);
+  };
+}
+
+export function getServerAiSettingsSnapshot() {
+  return DEFAULT_AI_SETTINGS;
+}
+
 export function loadAiSettings() {
-  if (typeof window === 'undefined') return { ...DEFAULT_AI_SETTINGS };
+  if (typeof window === 'undefined') return DEFAULT_AI_SETTINGS;
   try {
     const raw = window.localStorage.getItem(AI_SETTINGS_STORAGE_KEY);
-    if (!raw) return { ...DEFAULT_AI_SETTINGS };
+    if (raw === cachedSettingsRaw && cachedSettingsObj) {
+      return cachedSettingsObj;
+    }
+    cachedSettingsRaw = raw;
+    if (!raw) {
+      cachedSettingsObj = DEFAULT_AI_SETTINGS;
+      return cachedSettingsObj;
+    }
     const parsed = JSON.parse(raw);
-    return {
+    cachedSettingsObj = {
       ...DEFAULT_AI_SETTINGS,
       ...parsed,
       model: ensureFreeModelId(parsed?.model),
     };
+    return cachedSettingsObj;
   } catch {
-    return { ...DEFAULT_AI_SETTINGS };
+    return DEFAULT_AI_SETTINGS;
   }
 }
 
@@ -435,7 +466,11 @@ export function saveAiSettings(nextSettings) {
     model: ensureFreeModelId(nextSettings?.model),
   };
   if (typeof window !== 'undefined') {
-    window.localStorage.setItem(AI_SETTINGS_STORAGE_KEY, JSON.stringify(merged));
+    const serialized = JSON.stringify(merged);
+    window.localStorage.setItem(AI_SETTINGS_STORAGE_KEY, serialized);
+    cachedSettingsRaw = serialized;
+    cachedSettingsObj = merged;
+    settingsListeners.forEach((fn) => fn());
   }
   return merged;
 }
