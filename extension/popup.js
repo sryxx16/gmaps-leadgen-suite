@@ -1,5 +1,6 @@
 // popup.js
 const targetInput = document.getElementById('target');
+const skipOwnedWebCheckbox = document.getElementById('skipOwnedWeb');
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
 const statusEl = document.getElementById('status');
@@ -14,23 +15,21 @@ async function getActiveMapsTab() {
   return null;
 }
 
-// Pastikan content script aktif di tab Maps (force-inject jika belum ada)
 async function ensureContentScript(tabId) {
   try {
     const res = await chrome.tabs.sendMessage(tabId, { type: 'PING' });
     if (res && res.version) {
       return true;
     }
-  } catch (e) {
-    // Tab belum ada script
+  } catch {
+    // Content script not loaded yet
   }
 
-  // Suntikkan script versi baru ke tab
   try {
     await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
     await new Promise((r) => setTimeout(r, 250));
     return true;
-  } catch (err) {
+  } catch {
     return false;
   }
 }
@@ -39,6 +38,7 @@ function setRunningUI(running) {
   startBtn.disabled = running;
   stopBtn.disabled = !running;
   targetInput.disabled = running;
+  if (skipOwnedWebCheckbox) skipOwnedWebCheckbox.disabled = running;
 }
 
 function updateProgress(count, target, status, businessName = '', newCount = 0) {
@@ -51,13 +51,14 @@ function updateProgress(count, target, status, businessName = '', newCount = 0) 
   if (status === 'jalan') {
     statusText = businessName ? `Proses: ${businessName}` : 'Sedang mengambil data...';
   } else if (status === 'selesai') {
-    statusText = `Selesai! ${count} toko diproses (${newCount || count} data baru tersimpan).`;
+    statusText = businessName || `Selesai. ${newCount || count} prospek baru tersimpan.`;
   } else if (status === 'berhenti') {
     statusText = `Dihentikan manual pada ${count} data.`;
   } else if (status === 'habis') {
-    statusText = `Semua hasil pencarian Maps sudah terambil (${count} data).`;
+    statusText = businessName || `Semua hasil pencarian Maps sudah diperiksa (${count} data).`;
   } else if (status === 'no_feed') {
-    statusText = 'Belum ada hasil pencarian. Ketik pencarian di Google Maps (misal "toko sepatu depok"), tekan Enter, lalu klik Mulai.';
+    statusText =
+      'Belum ada daftar pencarian. Ketik pencarian di Google Maps (misal "toko sepatu depok"), tekan Enter, lalu klik Mulai.';
   }
 
   if (statusText) statusEl.textContent = statusText;
@@ -67,6 +68,14 @@ function updateProgress(count, target, status, businessName = '', newCount = 0) 
   } else if (status === 'jalan') {
     setRunningUI(true);
   }
+}
+
+if (skipOwnedWebCheckbox) {
+  skipOwnedWebCheckbox.addEventListener('change', () => {
+    chrome.storage.local.set({
+      scrapePrefs: { skipOwnedWebsite: skipOwnedWebCheckbox.checked },
+    });
+  });
 }
 
 startBtn.addEventListener('click', async () => {
@@ -79,25 +88,29 @@ startBtn.addEventListener('click', async () => {
   statusEl.textContent = 'Menghubungkan ke Google Maps...';
   const ready = await ensureContentScript(tab.id);
   if (!ready) {
-    statusEl.textContent = 'Gagal memuat scraper. Refresh tab Maps kamu (F5), lalu tekan Mulai.';
+    statusEl.textContent = 'Gagal memuat scraper. Refresh tab Maps (F5), lalu tekan Mulai.';
     return;
   }
 
   const target = parseInt(targetInput.value, 10) || 20;
+  const skipOwnedWebsite = skipOwnedWebCheckbox ? skipOwnedWebCheckbox.checked : true;
 
-  chrome.tabs.sendMessage(tab.id, { type: 'START_SCRAPE', target }, (res) => {
-    if (chrome.runtime.lastError) {
-      statusEl.textContent = 'Error: ' + chrome.runtime.lastError.message + '. Silakan refresh tab Maps (F5).';
-      setRunningUI(false);
-      return;
-    }
-    setRunningUI(true);
-    if (res && res.alreadyRunning) {
-      updateProgress(res.count, res.target, 'jalan');
-    } else {
+  await chrome.storage.local.set({ scrapePrefs: { skipOwnedWebsite } });
+
+  chrome.tabs.sendMessage(
+    tab.id,
+    { type: 'START_SCRAPE', target, skipOwnedWebsite },
+    (res) => {
+      if (chrome.runtime.lastError) {
+        statusEl.textContent =
+          'Error: ' + chrome.runtime.lastError.message + '. Silakan refresh tab Maps (F5).';
+        setRunningUI(false);
+        return;
+      }
+      setRunningUI(true);
       updateProgress(0, target, 'jalan', 'Memulai...');
     }
-  });
+  );
 });
 
 stopBtn.addEventListener('click', async () => {
@@ -110,14 +123,12 @@ openTableBtn.addEventListener('click', () => {
   chrome.runtime.sendMessage({ type: 'OPEN_TABLE' });
 });
 
-// Listener progress real-time dari content script
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === 'SCRAPE_PROGRESS') {
     updateProgress(msg.count, msg.target, msg.status, msg.businessName, msg.newCount);
   }
 });
 
-// Sinkronisasi otomatis dari storage
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.scrapeProgress) {
     const p = changes.scrapeProgress.newValue;
@@ -125,24 +136,35 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
 });
 
-// Inisialisasi tampilan saat popup dibuka
 (async () => {
-  const { leads = [], scrapeProgress } = await chrome.storage.local.get(['leads', 'scrapeProgress']);
+  const { leads = [], scrapeProgress, scrapePrefs } = await chrome.storage.local.get([
+    'leads',
+    'scrapeProgress',
+    'scrapePrefs',
+  ]);
+
+  if (skipOwnedWebCheckbox && scrapePrefs && typeof scrapePrefs.skipOwnedWebsite === 'boolean') {
+    skipOwnedWebCheckbox.checked = scrapePrefs.skipOwnedWebsite;
+  }
 
   const tab = await getActiveMapsTab();
   if (tab) {
     chrome.tabs.sendMessage(tab.id, { type: 'GET_STATUS' }, (res) => {
-      if (!chrome.runtime.lastError && res) {
-        if (res.isRunning) {
-          setRunningUI(true);
-          updateProgress(res.count, res.target, res.status, res.currentBusiness, res.newCount);
-          return;
-        }
+      if (!chrome.runtime.lastError && res && res.isRunning) {
+        setRunningUI(true);
+        updateProgress(res.count || 0, res.target || 20, 'jalan');
+        return;
       }
-      
+
       if (scrapeProgress && scrapeProgress.status === 'jalan') {
         setRunningUI(true);
-        updateProgress(scrapeProgress.count, scrapeProgress.target, scrapeProgress.status, scrapeProgress.businessName, scrapeProgress.newCount);
+        updateProgress(
+          scrapeProgress.count,
+          scrapeProgress.target,
+          scrapeProgress.status,
+          scrapeProgress.businessName,
+          scrapeProgress.newCount
+        );
       } else if (leads.length > 0) {
         statusEl.textContent = `Tersimpan ${leads.length} data bisnis. Tekan Mulai untuk menambah data baru.`;
       }

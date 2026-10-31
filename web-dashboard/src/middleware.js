@@ -3,8 +3,11 @@ import { NextResponse } from 'next/server';
 const PROTECTED_API_PATHS = [
   '/api/delete',
   '/api/delete-all',
+  '/api/delete-batch',
   '/api/leads/ai',
   '/api/ai/deepseek',
+  '/api/ai/openrouter',
+  '/api/ai/settings',
 ];
 
 export function middleware(request) {

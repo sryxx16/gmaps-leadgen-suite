@@ -6,15 +6,22 @@ import Link from 'next/link';
 import {
   DEFAULT_OPENROUTER_MODEL,
   analyzeLeadWithAi,
+  isAnyAiConfigured,
   resolveActiveProvider,
   loadAiSettings,
   saveAiSettings,
+  mergeCloudAndLocalAiSettings,
   subscribeAiSettings,
   getServerAiSettingsSnapshot,
 } from '@/lib/openrouter';
+import {
+  evaluateLeadQualification,
+  groupDeleteRecommendations,
+} from '@/lib/leadQualification';
 import SectionErrorBoundary from '@/components/SectionErrorBoundary';
 import AiSettingsModal from '@/components/AiSettingsModal';
 import AiLeadModal from '@/components/AiLeadModal';
+import CleanupRecommendationsModal from '@/components/CleanupRecommendationsModal';
 import ExtensionGuideModal from '@/components/ExtensionGuideModal';
 
 const PAGE_SIZE = 25;
@@ -56,12 +63,17 @@ function getQualificationStyles(qual = '') {
   };
 }
 
-export default function DashboardClient({ initialLeads = [] }) {
+export default function DashboardClient({
+  initialLeads = [],
+  initialCloudAiSettings = null,
+}) {
   const router = useRouter();
   const [leads, setLeads] = useState(initialLeads);
+  const [cloudAiSettings, setCloudAiSettings] = useState(initialCloudAiSettings);
 
   // Filter & pagination states
   const [searchQuery, setSearchQuery] = useState('');
+  const [viabilityFilter, setViabilityFilter] = useState('ALL'); // 'ALL' | 'ELIGIBLE' | 'RECOMMEND_DELETE'
   const [websiteFilter, setWebsiteFilter] = useState('ALL'); // 'ALL' | 'NO_WEB' | 'HAS_WEB'
   const [ratingFilter, setRatingFilter] = useState('ALL'); // 'ALL' | '4.5' | '4.0'
   const [channelFilter, setChannelFilter] = useState('ALL'); // 'ALL' | 'HAS_WA' | 'HAS_SHOP' | 'HAS_SOCIAL'
@@ -71,12 +83,18 @@ export default function DashboardClient({ initialLeads = [] }) {
   const [pageState, setPageState] = useState({ page: 1, filterKey: '' });
 
   // Modals & settings
-  const aiSettings = useSyncExternalStore(
+  const localAiSettings = useSyncExternalStore(
     subscribeAiSettings,
     loadAiSettings,
     getServerAiSettingsSnapshot
   );
+  const aiSettings = useMemo(
+    () => mergeCloudAndLocalAiSettings(cloudAiSettings, localAiSettings),
+    [cloudAiSettings, localAiSettings]
+  );
+
   const [showAiSettingsModal, setShowAiSettingsModal] = useState(false);
+  const [showCleanupModal, setShowCleanupModal] = useState(false);
   const [selectedLeadId, setSelectedLeadId] = useState(null);
   const [showExtensionModal, setShowExtensionModal] = useState(false);
 
@@ -103,6 +121,18 @@ export default function DashboardClient({ initialLeads = [] }) {
     return digits;
   }, []);
 
+  // Precompute rule-based qualification for every lead (0 AI tokens)
+  const evaluationById = useMemo(() => {
+    const map = new Map();
+    for (const lead of leads) {
+      map.set(String(lead.id), evaluateLeadQualification(lead));
+    }
+    return map;
+  }, [leads]);
+
+  const cleanupSummary = useMemo(() => groupDeleteRecommendations(leads), [leads]);
+  const eligibleCount = leads.length - cleanupSummary.totalFlagged;
+
   const selectedAiLead = useMemo(() => {
     if (selectedLeadId === null) return null;
     return leads.find((l) => String(l.id) === String(selectedLeadId)) || null;
@@ -110,9 +140,14 @@ export default function DashboardClient({ initialLeads = [] }) {
 
   const filteredLeads = useMemo(() => {
     return leads.filter((lead) => {
-      const hasWeb = Boolean(lead.website && lead.website.trim().length > 0);
-      if (websiteFilter === 'NO_WEB' && hasWeb) return false;
-      if (websiteFilter === 'HAS_WEB' && !hasWeb) return false;
+      const evalInfo = evaluationById.get(String(lead.id)) || evaluateLeadQualification(lead);
+
+      if (viabilityFilter === 'ELIGIBLE' && evalInfo.recommendDelete) return false;
+      if (viabilityFilter === 'RECOMMEND_DELETE' && !evalInfo.recommendDelete) return false;
+
+      const hasOwnedWeb = evalInfo.websiteType === 'OWNED_DOMAIN';
+      if (websiteFilter === 'NO_WEB' && hasOwnedWeb) return false;
+      if (websiteFilter === 'HAS_WEB' && !hasOwnedWeb) return false;
 
       const rVal = parseFloat((lead.rating || '').toString().replace(',', '.'));
       if (ratingFilter === '4.5' && (Number.isNaN(rVal) || rVal < 4.5)) return false;
@@ -144,6 +179,7 @@ export default function DashboardClient({ initialLeads = [] }) {
           leadCat,
           lead.socialMedia,
           lead.onlineShop,
+          evalInfo.shortLabel,
         ];
         const matched = haystacks.some((val) => (val || '').toLowerCase().includes(q));
         if (!matched) return false;
@@ -151,9 +187,19 @@ export default function DashboardClient({ initialLeads = [] }) {
 
       return true;
     });
-  }, [leads, searchQuery, websiteFilter, ratingFilter, channelFilter, aiFilter, categoryFilter]);
+  }, [
+    leads,
+    evaluationById,
+    viabilityFilter,
+    searchQuery,
+    websiteFilter,
+    ratingFilter,
+    channelFilter,
+    aiFilter,
+    categoryFilter,
+  ]);
 
-  const filterKey = `${searchQuery}|${websiteFilter}|${ratingFilter}|${channelFilter}|${aiFilter}|${categoryFilter}`;
+  const filterKey = `${viabilityFilter}|${searchQuery}|${websiteFilter}|${ratingFilter}|${channelFilter}|${aiFilter}|${categoryFilter}`;
   const totalPages = Math.max(1, Math.ceil(filteredLeads.length / PAGE_SIZE));
   const activePage = pageState.filterKey === filterKey ? pageState.page : 1;
   const safePage = Math.min(activePage, totalPages);
@@ -170,6 +216,7 @@ export default function DashboardClient({ initialLeads = [] }) {
   }, [filteredLeads, safePage]);
 
   const activeFilterCount = [
+    viabilityFilter !== 'ALL',
     websiteFilter !== 'ALL',
     ratingFilter !== 'ALL',
     channelFilter !== 'ALL',
@@ -181,6 +228,7 @@ export default function DashboardClient({ initialLeads = [] }) {
 
   const resetAllFilters = () => {
     setSearchQuery('');
+    setViabilityFilter('ALL');
     setWebsiteFilter('ALL');
     setRatingFilter('ALL');
     setChannelFilter('ALL');
@@ -205,19 +253,29 @@ export default function DashboardClient({ initialLeads = [] }) {
   // KPI metrics
   const totalLeads = leads.length;
   const filteredCount = filteredLeads.length;
-  const noWebsiteCount = useMemo(() => leads.filter((l) => !l.website).length, [leads]);
+  const noWebsiteCount = useMemo(
+    () =>
+      leads.filter((l) => {
+        const ev = evaluationById.get(String(l.id));
+        return ev ? ev.websiteType !== 'OWNED_DOMAIN' : !l.website;
+      }).length,
+    [leads, evaluationById]
+  );
   const hotLeadsCount = useMemo(
     () => leads.filter((l) => l.aiResearch?.leadQualification?.includes('HOT')).length,
     [leads]
   );
   const researchedCount = useMemo(() => leads.filter((l) => Boolean(l.aiResearch)).length, [leads]);
-  const waReadyCount = useMemo(
-    () => leads.filter((l) => Boolean(l.whatsapp || l.phone)).length,
-    [leads]
-  );
-  const unresearchedInFilter = useMemo(
-    () => filteredLeads.filter((l) => !l.aiResearch),
-    [filteredLeads]
+
+  // Bulk AI queue automatically skips leads flagged for deletion to save tokens
+  const eligibleUnresearchedInFilter = useMemo(
+    () =>
+      filteredLeads.filter((l) => {
+        if (l.aiResearch) return false;
+        const ev = evaluationById.get(String(l.id));
+        return !ev?.recommendDelete;
+      }),
+    [filteredLeads, evaluationById]
   );
 
   const persistAiToDb = useCallback(async (id, aiResearch) => {
@@ -273,14 +331,34 @@ export default function DashboardClient({ initialLeads = [] }) {
     }
   }
 
-  const handleSaveAiSettings = (nextSettings) => {
-    const saved = saveAiSettings(nextSettings);
-    const active = resolveActiveProvider(saved);
+  const handleSaveAiSettings = (nextSettings, meta = { mode: 'cloud' }) => {
+    if (meta.mode === 'cloud') {
+      setCloudAiSettings(nextSettings);
+      // Clear raw secrets from browser localStorage once stored safely in Cloud Neon DB
+      saveAiSettings({
+        ...nextSettings,
+        deepseekApiKey: '',
+        openrouterApiKey: '',
+      });
+      const active = resolveActiveProvider(nextSettings);
+      const providerLabel = active === 'deepseek' ? 'DeepSeek' : 'OpenRouter Free';
+      setShowAiSettingsModal(false);
+      setNotice({
+        type: 'success',
+        text: `Pengaturan AI disimpan ke Cloud Neon DB (Provider utama: ${providerLabel}). Seluruh tim otomatis tersinkron.`,
+      });
+      router.refresh();
+      return;
+    }
+
+    const savedLocal = saveAiSettings(nextSettings);
+    const merged = mergeCloudAndLocalAiSettings(cloudAiSettings, savedLocal);
+    const active = resolveActiveProvider(merged);
     const providerLabel = active === 'deepseek' ? 'DeepSeek' : 'OpenRouter Free';
     setShowAiSettingsModal(false);
     setNotice({
-      type: 'success',
-      text: `Pengaturan AI disimpan (Provider aktif: ${providerLabel}).`,
+      type: 'warning',
+      text: `Pengaturan AI disimpan sementara di browser ini (Provider aktif: ${providerLabel}).`,
     });
   };
 
@@ -289,16 +367,11 @@ export default function DashboardClient({ initialLeads = [] }) {
     const key = String(lead.id);
     if (analyzingIds.includes(key)) return;
 
-    const latestSettings = loadAiSettings();
-    const hasAnyKey = Boolean(
-      latestSettings.deepseekApiKey?.trim() || latestSettings.openrouterApiKey?.trim()
-    );
-
-    if (!hasAnyKey) {
+    if (!isAnyAiConfigured(aiSettings)) {
       setShowAiSettingsModal(true);
       setNotice({
         type: 'warning',
-        text: 'Masukkan API Key DeepSeek atau OpenRouter terlebih dahulu untuk menjalankan analisis AI.',
+        text: 'Simpan API Key DeepSeek atau OpenRouter terlebih dahulu untuk menjalankan analisis AI.',
       });
       return;
     }
@@ -307,7 +380,7 @@ export default function DashboardClient({ initialLeads = [] }) {
     setNotice(null);
 
     try {
-      const aiResult = await analyzeLeadWithAi(lead, latestSettings);
+      const aiResult = await analyzeLeadWithAi(lead, aiSettings);
 
       setLeads((prev) =>
         prev.map((item) =>
@@ -373,36 +446,47 @@ export default function DashboardClient({ initialLeads = [] }) {
   const handleBulkAnalyze = async () => {
     if (bulkState.running) return;
 
-    const latestSettings = loadAiSettings();
-    const hasAnyKey = Boolean(
-      latestSettings.deepseekApiKey?.trim() || latestSettings.openrouterApiKey?.trim()
-    );
-
-    if (!hasAnyKey) {
+    if (!isAnyAiConfigured(aiSettings)) {
       setShowAiSettingsModal(true);
       setNotice({
         type: 'warning',
-        text: 'Isi API Key DeepSeek atau OpenRouter terlebih dahulu sebelum menjalankan Riset AI Masal.',
+        text: 'Simpan API Key DeepSeek atau OpenRouter terlebih dahulu sebelum menjalankan Riset AI Masal.',
       });
       return;
     }
 
-    const activeProvider = resolveActiveProvider(latestSettings);
+    const activeProvider = resolveActiveProvider(aiSettings);
     const providerLabel = activeProvider === 'deepseek' ? 'DeepSeek' : 'OpenRouter Free';
     const stepDelayMs = activeProvider === 'deepseek' ? 900 : 3200;
 
-    const queue = unresearchedInFilter;
+    const queue = eligibleUnresearchedInFilter;
     if (queue.length === 0) {
+      const skippedFlagged = filteredLeads.filter(
+        (l) => !l.aiResearch && evaluationById.get(String(l.id))?.recommendDelete
+      ).length;
+
       setNotice({
         type: 'info',
-        text: 'Seluruh prospek pada filter aktif saat ini sudah memiliki hasil analisis AI.',
+        text:
+          skippedFlagged > 0
+            ? `Seluruh prospek layak sudah dianalisis. Terdapat ${skippedFlagged} baris berstatus Rekomendasi Hapus yang dilewati otomatis agar hemat kuota AI.`
+            : 'Seluruh prospek pada filter aktif saat ini sudah memiliki hasil analisis AI.',
+        actionLabel: skippedFlagged > 0 ? 'Tinjau Rekomendasi Hapus' : undefined,
+        onAction: skippedFlagged > 0 ? () => setShowCleanupModal(true) : undefined,
       });
       return;
     }
 
+    const skippedCount =
+      filteredLeads.filter((l) => !l.aiResearch).length - queue.length;
+    const skipNote =
+      skippedCount > 0
+        ? ` (${skippedCount} data Rekomendasi Hapus dilewati otomatis)`
+        : '';
+
     if (
       !window.confirm(
-        `Jalankan analisis AI (${providerLabel}) untuk ${queue.length} prospek pada filter saat ini?`
+        `Jalankan analisis AI (${providerLabel}) untuk ${queue.length} prospek layak pada filter saat ini${skipNote}?`
       )
     ) {
       return;
@@ -432,14 +516,14 @@ export default function DashboardClient({ initialLeads = [] }) {
       setBulkState((prev) => ({
         ...prev,
         currentName: target.name,
-        note: `Memproses [${i + 1}/${queue.length}] (${providerLabel}) — ${target.name}`,
+        note: `Memproses [${i + 1}/${queue.length}] (${providerLabel}): ${target.name}`,
       }));
       setAnalyzingIds((prev) => (prev.includes(key) ? prev : [...prev, key]));
 
       try {
         let aiResult;
         try {
-          aiResult = await analyzeLeadWithAi(target, latestSettings, {
+          aiResult = await analyzeLeadWithAi(target, aiSettings, {
             signal: abortController.signal,
           });
         } catch (err) {
@@ -451,7 +535,7 @@ export default function DashboardClient({ initialLeads = [] }) {
             await new Promise((r) => setTimeout(r, 6200));
             aiResult = await analyzeLeadWithAi(
               target,
-              { ...latestSettings, openrouterModel: DEFAULT_OPENROUTER_MODEL },
+              { ...aiSettings, openrouterModel: DEFAULT_OPENROUTER_MODEL },
               { signal: abortController.signal }
             );
           } else {
@@ -522,6 +606,41 @@ export default function DashboardClient({ initialLeads = [] }) {
           : `Riset masal selesai: ${completed} prospek berhasil dianalisis${failed > 0 ? `, ${failed} dilewati karena kendala model` : ''}.`,
       });
       router.refresh();
+    }
+  };
+
+  const executeBatchCleanupDelete = async (idsToDelete) => {
+    const idSet = new Set(idsToDelete.map(String));
+    const snapshot = leads;
+
+    setLeads((prev) => prev.filter((item) => !idSet.has(String(item.id))));
+    if (selectedLeadId !== null && idSet.has(String(selectedLeadId))) {
+      setSelectedLeadId(null);
+    }
+
+    try {
+      const res = await fetch('/api/delete-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: idsToDelete }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+
+      setShowCleanupModal(false);
+      if (viabilityFilter === 'RECOMMEND_DELETE') {
+        setViabilityFilter('ALL');
+      }
+      setNotice({
+        type: 'success',
+        text: `Berhasil membersihkan ${data.deletedCount || idsToDelete.length} prospek tidak layak dari database.`,
+      });
+      router.refresh();
+    } catch (err) {
+      setLeads(snapshot);
+      throw err;
     }
   };
 
@@ -616,13 +735,14 @@ export default function DashboardClient({ initialLeads = [] }) {
 
     const headers = [
       'Nama Bisnis',
+      'Status Kelayakan',
       'Rating',
       'Ulasan',
       'Kategori',
       'Alamat',
       'Telepon',
       'WhatsApp',
-      'Website Resmi',
+      'Website',
       'Sosmed',
       'Online Shop',
       'Kualifikasi AI',
@@ -639,9 +759,14 @@ export default function DashboardClient({ initialLeads = [] }) {
 
     const rows = [
       headers.map(escapeCsv).join(','),
-      ...filteredLeads.map((l) =>
-        [
+      ...filteredLeads.map((l) => {
+        const ev = evaluationById.get(String(l.id));
+        const viabilityText = ev?.recommendDelete
+          ? `Rekomendasi Hapus (${ev.shortLabel})`
+          : ev?.shortLabel || 'Layak';
+        return [
           l.name,
+          viabilityText,
           l.rating,
           l.reviewCount,
           l.categoryName,
@@ -661,8 +786,8 @@ export default function DashboardClient({ initialLeads = [] }) {
           l.scrapedAt,
         ]
           .map(escapeCsv)
-          .join(',')
-      ),
+          .join(',');
+      }),
     ];
 
     const blob = new Blob(['\uFEFF' + rows.join('\r\n')], {
@@ -683,11 +808,12 @@ export default function DashboardClient({ initialLeads = [] }) {
     });
   };
 
-  const hasApiKey = Boolean(
-    aiSettings.deepseekApiKey?.trim() || aiSettings.openrouterApiKey?.trim()
-  );
+  const hasApiKey = isAnyAiConfigured(aiSettings);
   const activeProviderName =
     resolveActiveProvider(aiSettings) === 'deepseek' ? 'DeepSeek' : 'OpenRouter';
+  const isCloudSynced = Boolean(
+    aiSettings.cloudDeepseekReady || aiSettings.cloudOpenrouterReady
+  );
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-5">
@@ -698,7 +824,7 @@ export default function DashboardClient({ initialLeads = [] }) {
             Dashboard Prospek
           </h1>
           <p className="text-xs sm:text-sm text-zinc-400">
-            Kelola hasil scraping Google Maps, skor prospek dengan DeepSeek &amp; OpenRouter AI, dan kirim penawaran via WhatsApp.
+            Fokus pada usaha aktif yang belum memiliki website resmi, analisis celah bisnis dengan AI, dan kirim pesan WhatsApp natural.
           </p>
         </div>
 
@@ -706,18 +832,31 @@ export default function DashboardClient({ initialLeads = [] }) {
           <button
             type="button"
             onClick={handleBulkAnalyze}
-            disabled={bulkState.running || unresearchedInFilter.length === 0}
+            disabled={bulkState.running || eligibleUnresearchedInFilter.length === 0}
             className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-zinc-100 hover:bg-white text-zinc-950 transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
-            title="Analisis otomatis seluruh prospek pada filter aktif yang belum diriset"
+            title="Analisis otomatis seluruh prospek layak pada filter aktif yang belum diriset"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
             <span>
               Riset AI Masal
-              {unresearchedInFilter.length > 0 ? ` (${unresearchedInFilter.length})` : ''}
+              {eligibleUnresearchedInFilter.length > 0
+                ? ` (${eligibleUnresearchedInFilter.length})`
+                : ''}
             </span>
           </button>
+
+          {cleanupSummary.totalFlagged > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowCleanupModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-rose-950/45 hover:bg-rose-950/75 text-rose-200 border border-rose-900/70 transition-colors"
+              title="Tinjau dan bersihkan prospek yang sudah punya web, tutup, franchise, atau tanpa kontak"
+            >
+              <span>Rekomendasi Hapus ({cleanupSummary.totalFlagged})</span>
+            </button>
+          )}
 
           <button
             type="button"
@@ -729,7 +868,10 @@ export default function DashboardClient({ initialLeads = [] }) {
                 hasApiKey ? 'bg-emerald-400' : 'bg-amber-400'
               }`}
             />
-            <span>AI: {activeProviderName}</span>
+            <span>
+              AI: {activeProviderName}
+              {isCloudSynced ? ' (Cloud)' : ''}
+            </span>
           </button>
 
           <button
@@ -853,22 +995,24 @@ export default function DashboardClient({ initialLeads = [] }) {
 
         <button
           type="button"
-          onClick={() => setWebsiteFilter(websiteFilter === 'NO_WEB' ? 'ALL' : 'NO_WEB')}
+          onClick={() =>
+            setViabilityFilter(viabilityFilter === 'ELIGIBLE' ? 'ALL' : 'ELIGIBLE')
+          }
           className={`text-left p-4 rounded-xl border transition-colors ${
-            websiteFilter === 'NO_WEB'
+            viabilityFilter === 'ELIGIBLE'
               ? 'bg-zinc-800/70 border-zinc-400'
               : 'bg-[#121215] border-zinc-800/80 hover:border-zinc-700'
           }`}
         >
           <div className="flex items-center justify-between gap-1">
-            <span className="text-xs font-medium text-zinc-400 truncate">Belum Ada Website</span>
-            <span className="text-[10px] text-zinc-300 bg-zinc-800 px-1.5 py-0.5 rounded shrink-0">
-              Target
+            <span className="text-xs font-medium text-zinc-400 truncate">Layak Prospek</span>
+            <span className="text-[10px] text-emerald-200 bg-emerald-950/60 border border-emerald-900/60 px-1.5 py-0.5 rounded shrink-0">
+              Tanpa Web Resmi
             </span>
           </div>
-          <div className="text-2xl font-bold text-white tracking-tight mt-1">{noWebsiteCount}</div>
+          <div className="text-2xl font-bold text-white tracking-tight mt-1">{eligibleCount}</div>
           <div className="text-[11px] text-zinc-500 mt-1">
-            {totalLeads > 0 ? Math.round((noWebsiteCount / totalLeads) * 100) : 0}% dari total data
+            {noWebsiteCount} belum punya domain mandiri
           </div>
         </button>
 
@@ -893,21 +1037,29 @@ export default function DashboardClient({ initialLeads = [] }) {
 
         <button
           type="button"
-          onClick={() => setChannelFilter(channelFilter === 'HAS_WA' ? 'ALL' : 'HAS_WA')}
+          onClick={() =>
+            setViabilityFilter(
+              viabilityFilter === 'RECOMMEND_DELETE' ? 'ALL' : 'RECOMMEND_DELETE'
+            )
+          }
           className={`text-left p-4 rounded-xl border transition-colors ${
-            channelFilter === 'HAS_WA'
-              ? 'bg-zinc-800/70 border-zinc-400'
+            viabilityFilter === 'RECOMMEND_DELETE'
+              ? 'bg-rose-950/35 border-rose-700/80'
               : 'bg-[#121215] border-zinc-800/80 hover:border-zinc-700'
           }`}
         >
           <div className="flex items-center justify-between gap-1">
-            <span className="text-xs font-medium text-zinc-400 truncate">Siap Kontak WA</span>
-            <span className="text-[10px] text-emerald-200 bg-emerald-950/60 border border-emerald-900/60 px-1.5 py-0.5 rounded shrink-0">
-              Aktif
+            <span className="text-xs font-medium text-zinc-400 truncate">Rekomendasi Hapus</span>
+            <span className="text-[10px] text-zinc-300 bg-zinc-800 px-1.5 py-0.5 rounded shrink-0">
+              Filter Sampah
             </span>
           </div>
-          <div className="text-2xl font-bold text-white tracking-tight mt-1">{waReadyCount}</div>
-          <div className="text-[11px] text-zinc-500 mt-1">Memiliki nomor telepon / WA</div>
+          <div className="text-2xl font-bold text-white tracking-tight mt-1">
+            {cleanupSummary.totalFlagged}
+          </div>
+          <div className="text-[11px] text-zinc-500 mt-1">
+            Ada web resmi, franchise, tutup, atau tanpa kontak
+          </div>
         </button>
       </div>
 
@@ -968,17 +1120,47 @@ export default function DashboardClient({ initialLeads = [] }) {
             mobileFiltersOpen ? 'block' : 'hidden'
           } md:block space-y-3.5 pt-3 border-t border-zinc-800/70 text-xs`}
         >
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-            {/* Website Filter */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3.5">
+            {/* Viability Filter */}
             <div className="space-y-1.5">
               <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block">
-                Status Website
+                Kelayakan Target
               </span>
               <div className="flex flex-wrap gap-1.5">
                 {[
                   { id: 'ALL', label: 'Semua' },
-                  { id: 'NO_WEB', label: `Belum Ada (${noWebsiteCount})` },
-                  { id: 'HAS_WEB', label: 'Ada Web' },
+                  { id: 'ELIGIBLE', label: `Layak (${eligibleCount})` },
+                  {
+                    id: 'RECOMMEND_DELETE',
+                    label: `Rekomendasi Hapus (${cleanupSummary.totalFlagged})`,
+                  },
+                ].map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setViabilityFilter(opt.id)}
+                    className={`px-2.5 py-1 rounded-lg text-xs transition-colors ${
+                      viabilityFilter === opt.id
+                        ? 'bg-zinc-100 text-zinc-950 font-semibold shadow-sm'
+                        : 'bg-zinc-900/90 text-zinc-400 border border-zinc-800 hover:text-zinc-200'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Website Filter */}
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block">
+                Domain Mandiri
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { id: 'ALL', label: 'Semua' },
+                  { id: 'NO_WEB', label: `Belum Punya (${noWebsiteCount})` },
+                  { id: 'HAS_WEB', label: 'Sudah Punya' },
                 ].map((opt) => (
                   <button
                     key={opt.id}
@@ -1145,6 +1327,8 @@ export default function DashboardClient({ initialLeads = [] }) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 lg:hidden">
               {paginatedLeads.map((lead, idx) => {
                 const key = String(lead.id ?? idx);
+                const evalInfo =
+                  evaluationById.get(key) || evaluateLeadQualification(lead);
                 const isAnalyzing = analyzingIds.includes(key);
                 const isDeleting = deletingIds.includes(key);
                 const waDigits = normalizeWa(lead.whatsapp || lead.phone);
@@ -1152,7 +1336,7 @@ export default function DashboardClient({ initialLeads = [] }) {
                 const score = lead.aiResearch?.leadScore;
                 const qualStyle = getQualificationStyles(qual);
 
-                const defaultPitch = `Halo Kak ${lead.name}, salam kenal dari ${aiSettings.agencyName || 'Tim Web Developer'}. Kami melihat profil bisnis Kakak di Google Maps dan ingin menawarkan pembuatan website katalog mandiri agar pelanggan lebih mudah order. Boleh kami kirimkan contoh demonya Kak?`;
+                const defaultPitch = `Halo Kak ${lead.name}, salam kenal dari ${aiSettings.agencyName || 'Tim Web Developer'}. Kami lihat profil usaha Kakak di Google Maps sudah punya ulasan bagus namun belum mencantumkan website katalog resmi. Boleh kami kirimkan contoh tampilan singkatnya Kak? Kalau belum butuh saat ini santai saja, abaikan tidak apa-apa.`;
                 const waText = lead.aiResearch?.pitchDraft || defaultPitch;
                 const waUrl = waDigits
                   ? `https://wa.me/${waDigits}?text=${encodeURIComponent(waText)}`
@@ -1166,7 +1350,9 @@ export default function DashboardClient({ initialLeads = [] }) {
                 return (
                   <div
                     key={key}
-                    className="clean-card rounded-xl p-4 flex flex-col justify-between gap-3.5"
+                    className={`clean-card rounded-xl p-4 flex flex-col justify-between gap-3.5 ${
+                      evalInfo.recommendDelete ? 'opacity-80 border-rose-950/60' : ''
+                    }`}
                   >
                     <div className="space-y-2.5">
                       <div className="flex items-start justify-between gap-2.5">
@@ -1196,6 +1382,21 @@ export default function DashboardClient({ initialLeads = [] }) {
                       )}
 
                       <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                        {evalInfo.recommendDelete ? (
+                          <button
+                            type="button"
+                            onClick={() => setShowCleanupModal(true)}
+                            title={evalInfo.reasonTitle}
+                            className="px-2 py-0.5 rounded-md bg-rose-950/55 text-rose-200 border border-rose-900/70 font-medium"
+                          >
+                            Hapus: {evalInfo.shortLabel}
+                          </button>
+                        ) : evalInfo.tier === 'PRIME' ? (
+                          <span className="px-2 py-0.5 rounded-md bg-emerald-950/45 text-emerald-200 border border-emerald-900/60">
+                            Target Potensial
+                          </span>
+                        ) : null}
+
                         {lead.website ? (
                           <a
                             href={lead.website}
@@ -1203,7 +1404,11 @@ export default function DashboardClient({ initialLeads = [] }) {
                             rel="noopener noreferrer"
                             className="px-2 py-0.5 rounded-md bg-zinc-900 text-zinc-200 border border-zinc-700 hover:border-zinc-500 underline underline-offset-2"
                           >
-                            Website Resmi
+                            {evalInfo.websiteType === 'FREE_BUILDER'
+                              ? 'Web Gratisan'
+                              : evalInfo.websiteType === 'OWNED_DOMAIN'
+                                ? 'Domain Mandiri'
+                                : 'Tautan Web'}
                           </a>
                         ) : (
                           <span className="px-2 py-0.5 rounded-md bg-zinc-900/90 text-zinc-400 border border-zinc-800">
@@ -1344,13 +1549,15 @@ export default function DashboardClient({ initialLeads = [] }) {
                       <th className="py-3.5 px-4">Kontak</th>
                       <th className="py-3.5 px-3">Website</th>
                       <th className="py-3.5 px-3">Sosmed / Olshop</th>
-                      <th className="py-3.5 px-3">Kualifikasi AI</th>
+                      <th className="py-3.5 px-3">Kualifikasi &amp; AI</th>
                       <th className="py-3.5 px-4 text-right">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800/60 text-xs text-zinc-300">
                     {paginatedLeads.map((lead, idx) => {
                       const key = String(lead.id ?? idx);
+                      const evalInfo =
+                        evaluationById.get(key) || evaluateLeadQualification(lead);
                       const isAnalyzing = analyzingIds.includes(key);
                       const isDeleting = deletingIds.includes(key);
                       const waDigits = normalizeWa(lead.whatsapp || lead.phone);
@@ -1358,7 +1565,7 @@ export default function DashboardClient({ initialLeads = [] }) {
                       const score = lead.aiResearch?.leadScore;
                       const qualStyle = getQualificationStyles(qual);
 
-                      const defaultPitch = `Halo Kak ${lead.name}, salam kenal dari ${aiSettings.agencyName || 'Tim Web Developer'}. Kami melihat profil bisnis Kakak di Google Maps dan ingin menawarkan pembuatan website katalog mandiri agar pelanggan lebih mudah order. Boleh kami kirimkan contoh demonya Kak?`;
+                      const defaultPitch = `Halo Kak ${lead.name}, salam kenal dari ${aiSettings.agencyName || 'Tim Web Developer'}. Kami lihat profil usaha Kakak di Google Maps sudah punya ulasan bagus namun belum mencantumkan website katalog resmi. Boleh kami kirimkan contoh tampilan singkatnya Kak? Kalau belum butuh saat ini santai saja, abaikan tidak apa-apa.`;
                       const waText = lead.aiResearch?.pitchDraft || defaultPitch;
                       const waUrl = waDigits
                         ? `https://wa.me/${waDigits}?text=${encodeURIComponent(waText)}`
@@ -1370,13 +1577,37 @@ export default function DashboardClient({ initialLeads = [] }) {
                         )}`;
 
                       return (
-                        <tr key={key} className="hover:bg-zinc-800/30 transition-colors">
-                          <td className="py-3 px-4 max-w-[210px]">
+                        <tr
+                          key={key}
+                          className={`hover:bg-zinc-800/30 transition-colors ${
+                            evalInfo.recommendDelete ? 'bg-rose-950/10' : ''
+                          }`}
+                        >
+                          <td className="py-3 px-4 max-w-[230px]">
                             <div className="font-medium text-white truncate" title={lead.name}>
                               {lead.name}
                             </div>
-                            <div className="text-[11px] text-zinc-500 truncate mt-0.5">
-                              {lead.categoryName || 'Bisnis Lokal'}
+                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                              <span className="text-[11px] text-zinc-500 truncate max-w-[140px]">
+                                {lead.categoryName || 'Bisnis Lokal'}
+                              </span>
+                              {evalInfo.recommendDelete ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setShowCleanupModal(true)}
+                                  title={evalInfo.reasonTitle}
+                                  className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-950/60 text-rose-200 border border-rose-900/70 hover:border-rose-700"
+                                >
+                                  Hapus: {evalInfo.shortLabel}
+                                </button>
+                              ) : evalInfo.tier === 'PRIME' && !lead.aiResearch ? (
+                                <span
+                                  title={evalInfo.reasonTitle}
+                                  className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-950/45 text-emerald-200 border border-emerald-900/60"
+                                >
+                                  Potensial
+                                </span>
+                              ) : null}
                             </div>
                           </td>
 
@@ -1395,7 +1626,7 @@ export default function DashboardClient({ initialLeads = [] }) {
                             )}
                           </td>
 
-                          <td className="py-3 px-4 max-w-[220px]">
+                          <td className="py-3 px-4 max-w-[210px]">
                             <div className="text-zinc-400 truncate" title={lead.address}>
                               {lead.address || '-'}
                             </div>
@@ -1416,9 +1647,15 @@ export default function DashboardClient({ initialLeads = [] }) {
                                 href={lead.website}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-zinc-300 hover:text-white underline underline-offset-2 text-xs"
+                                className={`underline underline-offset-2 text-xs ${
+                                  evalInfo.websiteType === 'FREE_BUILDER'
+                                    ? 'text-amber-300 hover:text-amber-200'
+                                    : 'text-zinc-300 hover:text-white'
+                                }`}
                               >
-                                Buka Web &#8599;
+                                {evalInfo.websiteType === 'FREE_BUILDER'
+                                  ? 'Web Gratisan'
+                                  : 'Domain Mandiri'}
                               </a>
                             ) : (
                               <span className="px-2 py-0.5 rounded-md text-[11px] bg-zinc-900 text-zinc-400 border border-zinc-800">
@@ -1534,7 +1771,7 @@ export default function DashboardClient({ initialLeads = [] }) {
             {totalPages > 1 && (
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1 text-xs text-zinc-400">
                 <span>
-                  Menampilkan {(safePage - 1) * PAGE_SIZE + 1}&ndash;
+                  Menampilkan {(safePage - 1) * PAGE_SIZE + 1} sampai{' '}
                   {Math.min(safePage * PAGE_SIZE, filteredLeads.length)} dari {filteredLeads.length} prospek
                 </span>
                 <div className="flex items-center gap-1.5">
@@ -1568,10 +1805,21 @@ export default function DashboardClient({ initialLeads = [] }) {
       <SectionErrorBoundary title="Gagal memuat jendela pengaturan AI">
         {showAiSettingsModal && (
           <AiSettingsModal
-            key={`settings-${aiSettings.primaryProvider}-${hasApiKey ? 'ready' : 'empty'}`}
+            key={`settings-${aiSettings.primaryProvider}-${hasApiKey ? 'ready' : 'empty'}-${aiSettings.cloudDeepseekMask}-${aiSettings.cloudOpenrouterMask}`}
             settings={aiSettings}
             onClose={() => setShowAiSettingsModal(false)}
             onSave={handleSaveAiSettings}
+          />
+        )}
+      </SectionErrorBoundary>
+
+      <SectionErrorBoundary title="Gagal memuat jendela rekomendasi hapus">
+        {showCleanupModal && (
+          <CleanupRecommendationsModal
+            key={`cleanup-${cleanupSummary.totalFlagged}`}
+            groups={cleanupSummary.groups}
+            onClose={() => setShowCleanupModal(false)}
+            onConfirmDelete={executeBatchCleanupDelete}
           />
         )}
       </SectionErrorBoundary>

@@ -1,23 +1,37 @@
 import { NextResponse } from 'next/server';
+import { getDecryptedAiSettingsFromDb } from '@/lib/aiSettingsStore';
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
 const ALLOWED_DEEPSEEK_MODELS = new Set(['deepseek-chat', 'deepseek-reasoner']);
 
-// Rationale: Proxies DeepSeek requests server-side because api.deepseek.com blocks browser CORS preflight.
+// Rationale: Proxies DeepSeek requests server-side because api.deepseek.com blocks browser CORS preflight, and resolves shared team API keys stored in Neon DB.
 export async function POST(request) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 45000);
 
   try {
     const body = await request.json();
-    const apiKey = String(body?.apiKey || process.env.DEEPSEEK_API_KEY || '').trim();
+    let apiKey = String(body?.apiKey || '').trim();
+
+    if (!apiKey) {
+      try {
+        const dbConfig = await getDecryptedAiSettingsFromDb();
+        apiKey = String(dbConfig?.deepseekApiKey || '').trim();
+      } catch (dbErr) {
+        console.error('Failed to read DeepSeek key from Neon DB:', { message: dbErr?.message });
+      }
+    }
+
+    if (!apiKey) {
+      apiKey = String(process.env.DEEPSEEK_API_KEY || '').trim();
+    }
 
     if (!apiKey) {
       return NextResponse.json(
         {
           success: false,
           code: 'MISSING_API_KEY',
-          error: 'API Key DeepSeek belum diisi.',
+          error: 'API Key DeepSeek belum tersimpan di Cloud DB maupun input lokal.',
         },
         { status: 400 }
       );
@@ -46,7 +60,7 @@ export async function POST(request) {
     // deepseek-chat supports strict json_object output and temperature; deepseek-reasoner omits them per DeepSeek spec.
     if (model === 'deepseek-chat') {
       upstreamBody.response_format = { type: 'json_object' };
-      upstreamBody.temperature = 0.3;
+      upstreamBody.temperature = 0.35;
     }
 
     const upstreamRes = await fetch(DEEPSEEK_API_URL, {
@@ -144,4 +158,3 @@ export async function POST(request) {
     clearTimeout(timeout);
   }
 }
-

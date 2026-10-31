@@ -9,8 +9,8 @@ Alat ini dirancang khusus untuk **membantu para programmer, web developer, atau 
 
 Repositori ini terdiri dari dua bagian utama:
 
-1. **`extension/`** — Ekstensi Google Chrome untuk melakukan scraping data bisnis secara otomatis dari halaman pencarian Google Maps.
-2. **`web-dashboard/`** — Aplikasi Next.js untuk menerima file *export JSON* dari ekstensi, menyimpan data ke dalam SQLite lokal, dan menampilkannya di Dashboard dengan UI modern.
+1. **`extension/`**: Ekstensi Google Chrome untuk melakukan scraping data bisnis secara otomatis dari halaman pencarian Google Maps.
+2. **`web-dashboard/`**: Aplikasi Next.js untuk menerima data dari ekstensi, menyimpannya ke database Neon PostgreSQL, serta mengelola kualifikasi prospek dan penawaran AI.
 
 ## Download Cepat (Untuk Pengguna Non-Developer)
 

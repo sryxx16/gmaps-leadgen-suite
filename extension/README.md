@@ -61,11 +61,11 @@ Jika Anda ingin mengintegrasikan data ini ke Web Dashboard buatan sendiri, berik
 
 ## Struktur Folder
 Ekstensi ini menggunakan arsitektur *flat-folder* agar tetap simpel dan ringan untuk dikembangkan:
-- `manifest.json` — Konfigurasi dasar ekstensi (Manifest V3).
-- `content.js` — Script yang disuntikkan ke halaman Google Maps untuk melakukan tugas scraping.
-- `background.js` — Service worker pendukung.
-- `popup.html / js / css` — Antarmuka utama saat icon ekstensi diklik.
-- `table.html / js / css` — Halaman dashboard internal ekstensi untuk mengelola data.
+- `manifest.json`: Konfigurasi dasar ekstensi (Manifest V3).
+- `content.js`: Script yang disuntikkan ke halaman Google Maps untuk melakukan tugas scraping.
+- `background.js`: Service worker pendukung.
+- `popup.html / js / css`: Antarmuka utama saat icon ekstensi diklik.
+- `table.html / js / css`: Halaman dashboard internal ekstensi untuk mengelola data.
 
 Kalau mau bikin link WA sendiri di website, rumusnya:
 ```js

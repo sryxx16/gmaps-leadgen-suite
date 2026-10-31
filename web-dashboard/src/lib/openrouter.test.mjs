@@ -4,6 +4,8 @@ import {
   DEFAULT_OPENROUTER_MODEL,
   ensureFreeModelId,
   filterFreeModels,
+  humanizeGeneratedText,
+  buildLeadPrompt,
   parseAiResearchResponse,
   analyzeLeadWithAi,
   analyzeLeadWithOpenRouter,
@@ -37,17 +39,30 @@ test('filterFreeModels keeps only zero-cost :free models and pins openrouter/fre
   assert.equal(ensureFreeModelId('openai/gpt-4o'), DEFAULT_OPENROUTER_MODEL);
 });
 
-test('parseAiResearchResponse strips reasoning blocks and markdown fences cleanly', () => {
+test('humanizeGeneratedText strips double dashes, em-dashes, and emojis while preserving Indonesian reduplicated words', () => {
+  const dirty =
+    'Halo Kak \uD83D\uDE80 -- kami lihat produk-produk Roti Mawar sangat ramai \u2014 ulasan rata-rata 4.8 - tapi belum ada katalog web resmi.';
+  const cleaned = humanizeGeneratedText(dirty);
+
+  assert.ok(!cleaned.includes('--'));
+  assert.ok(!cleaned.includes('\u2014'));
+  assert.ok(!cleaned.includes(' - '));
+  assert.ok(!cleaned.includes('\uD83D\uDE80'));
+  assert.ok(cleaned.includes('produk-produk'));
+  assert.ok(cleaned.includes('rata-rata'));
+});
+
+test('parseAiResearchResponse strips reasoning blocks, markdown fences, and sanitizes dashes in output', () => {
   const raw = `<think>Evaluating business signals...</think>
 \`\`\`json
 {
   "leadQualification": "hot lead",
   "leadScore": 91.6,
   "opportunityType": "Website Katalog Mandiri",
-  "digitalPresenceSummary": "Toko memiliki 420 ulasan positif dan aktif di Shopee namun belum memiliki domain website sendiri.",
+  "digitalPresenceSummary": "Toko memiliki 420 ulasan positif -- aktif di Shopee \u2014 namun belum memiliki domain website sendiri.",
   "pitchAngle": "Bantu hemat potongan biaya admin marketplace dengan katalog order langsung.",
-  "pitchDraft": "Halo Kak, salam kenal. Kami lihat toko Kakak sudah punya 420+ ulasan bagus di Maps...",
-  "followUpDraft": "Halo Kak, izin menyapa kembali terkait contoh katalog websitenya..."
+  "pitchDraft": "Halo Kak -- salam kenal. Kami lihat produk-produk toko Kakak sudah punya 420+ ulasan bagus di Maps \u2014 boleh kami kirim contoh katalognya?",
+  "followUpDraft": "Halo Kak -- izin menyapa kembali terkait contoh katalog websitenya."
 }
 \`\`\`
 Semoga membantu!`;
@@ -57,28 +72,50 @@ Semoga membantu!`;
   assert.equal(res.leadScore, 92);
   assert.equal(res.modelUsed, 'deepseek/deepseek-chat');
   assert.ok(res.pitchDraft.includes('420+'));
+  assert.ok(res.pitchDraft.includes('produk-produk'));
+  assert.ok(!res.pitchDraft.includes('--'));
+  assert.ok(!res.pitchDraft.includes('\u2014'));
+  assert.ok(!res.digitalPresenceSummary.includes('--'));
+  assert.ok(!res.followUpDraft.includes('--'));
 });
 
-test('resolveActiveProvider defaults to DeepSeek without colliding when only one key is present', () => {
+test('buildLeadPrompt enforces anti-hallucination and bans double dashes without containing em-dashes itself', () => {
+  const { systemPrompt, userPrompt } = buildLeadPrompt({
+    name: 'Bengkel Mobil Jaya',
+    categoryName: 'Bengkel Mobil',
+    website: 'https://bengkeljaya.blogspot.com',
+    rating: '4.7',
+    reviewCount: '85',
+    phone: '08123456789',
+  });
+
+  assert.ok(systemPrompt.includes('DILARANG KERAS menggunakan tanda double dash'));
+  assert.ok(!systemPrompt.includes('\u2014'));
+  assert.ok(userPrompt.includes('SUBDOMAIN GRATISAN'));
+});
+
+test('resolveActiveProvider supports both local keys and shared Cloud Neon readiness flags', () => {
   assert.equal(
     resolveActiveProvider({
       primaryProvider: 'deepseek',
       deepseekApiKey: '',
-      openrouterApiKey: 'sk-or-v1-abc',
+      cloudDeepseekReady: false,
+      cloudOpenrouterReady: true,
     }),
     'openrouter'
   );
   assert.equal(
     resolveActiveProvider({
       primaryProvider: 'deepseek',
-      deepseekApiKey: 'sk-ds-123',
-      openrouterApiKey: 'sk-or-v1-abc',
+      deepseekApiKey: '',
+      cloudDeepseekReady: true,
+      cloudOpenrouterReady: true,
     }),
     'deepseek'
   );
 });
 
-test('analyzeLeadWithAi uses DeepSeek primary and auto-falls back to OpenRouter Free on 402/429', async () => {
+test('analyzeLeadWithAi supports Cloud Neon keys and auto-falls back from DeepSeek to OpenRouter proxy on 402', async () => {
   const lead = { name: 'Toko Roti Mawar', address: 'Bandung' };
   const calls = [];
 
@@ -99,22 +136,17 @@ test('analyzeLeadWithAi uses DeepSeek primary and auto-falls back to OpenRouter 
       ok: true,
       status: 200,
       json: async () => ({
+        success: true,
         model: 'google/gemma-3-27b-it:free',
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                leadQualification: 'HOT LEAD',
-                leadScore: 88,
-                opportunityType: 'Website Katalog',
-                digitalPresenceSummary: 'Aktif di Maps tanpa website.',
-                pitchAngle: 'Katalog online mandiri.',
-                pitchDraft: 'Halo Kak Toko Roti Mawar, salam kenal...',
-                followUpDraft: 'Halo Kak, izin follow-up...',
-              }),
-            },
-          },
-        ],
+        content: JSON.stringify({
+          leadQualification: 'HOT LEAD',
+          leadScore: 88,
+          opportunityType: 'Website Katalog',
+          digitalPresenceSummary: 'Aktif di Maps tanpa website.',
+          pitchAngle: 'Katalog online mandiri.',
+          pitchDraft: 'Halo Kak Toko Roti Mawar, salam kenal.',
+          followUpDraft: 'Halo Kak, izin menyapa kembali.',
+        }),
       }),
     };
   };
@@ -124,15 +156,15 @@ test('analyzeLeadWithAi uses DeepSeek primary and auto-falls back to OpenRouter 
     {
       primaryProvider: 'deepseek',
       autoFallback: true,
-      deepseekApiKey: 'sk-deepseek-key',
-      openrouterApiKey: 'sk-or-v1-free-key',
+      cloudDeepseekReady: true,
+      cloudOpenrouterReady: true,
     },
     { fetchImpl: mockFetch }
   );
 
   assert.equal(calls.length, 2);
   assert.equal(calls[0], '/api/ai/deepseek');
-  assert.ok(calls[1].includes('openrouter.ai'));
+  assert.equal(calls[1], '/api/ai/openrouter');
   assert.equal(res.providerUsed, 'openrouter');
   assert.equal(res.fallbackFrom, 'deepseek');
   assert.equal(res.leadQualification, 'HOT LEAD');
@@ -142,7 +174,7 @@ test('analyzeLeadWithOpenRouter fails fast on missing API key and surfaces 429 r
   const lead = { name: 'Toko Roti Mawar', address: 'Bandung' };
 
   await assert.rejects(
-    () => analyzeLeadWithOpenRouter(lead, { openrouterApiKey: '   ' }),
+    () => analyzeLeadWithOpenRouter(lead, { openrouterApiKey: '   ', cloudOpenrouterReady: false }),
     (err) => err.code === 'MISSING_API_KEY' && err.retryable === false
   );
 

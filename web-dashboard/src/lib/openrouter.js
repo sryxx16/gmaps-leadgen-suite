@@ -1,8 +1,11 @@
-// Rationale: Unified BYOK multi-provider router (DeepSeek primary via server CORS proxy + OpenRouter zero-cost direct browser fallback) without external SDK bloat.
+// Rationale: Unified multi-provider AI client (DeepSeek primary + OpenRouter Free fallback) with shared Neon DB key support, grounded lead analysis prompting, and deterministic anti-AI-slop text humanizer.
+
+import { classifyWebsiteUrl } from './leadQualification.js';
 
 export const OPENROUTER_CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions';
 export const OPENROUTER_MODELS_URL = 'https://openrouter.ai/api/v1/models';
 export const DEEPSEEK_PROXY_URL = '/api/ai/deepseek';
+export const OPENROUTER_PROXY_URL = '/api/ai/openrouter';
 
 export const DEFAULT_OPENROUTER_MODEL = 'openrouter/free';
 export const DEFAULT_DEEPSEEK_MODEL = 'deepseek-chat';
@@ -13,11 +16,11 @@ const LEGACY_OPENROUTER_STORAGE_KEY = 'gmaps_leadgen_openrouter_v1';
 export const DEEPSEEK_MODELS = [
   {
     id: 'deepseek-chat',
-    name: 'DeepSeek V3 (deepseek-chat — Cepat & JSON Stabil)',
+    name: 'DeepSeek V3 (deepseek-chat: Cepat & JSON Stabil)',
   },
   {
     id: 'deepseek-reasoner',
-    name: 'DeepSeek R1 (deepseek-reasoner — Deep Thinking)',
+    name: 'DeepSeek R1 (deepseek-reasoner: Deep Thinking)',
   },
 ];
 
@@ -59,6 +62,10 @@ export const DEFAULT_AI_SETTINGS = {
   agencyName: 'Tim Web Developer',
   serviceFocus: 'Pembuatan Website Katalog, Company Profile & Landing Page SEO Lokal',
   pitchTone: 'casual', // 'casual' | 'formal' | 'consultative'
+  cloudDeepseekReady: false,
+  cloudDeepseekMask: '',
+  cloudOpenrouterReady: false,
+  cloudOpenrouterMask: '',
 };
 
 export class OpenRouterClientError extends Error {
@@ -73,6 +80,18 @@ export class OpenRouterClientError extends Error {
     this.retryable = retryable;
     this.provider = provider;
   }
+}
+
+export function isDeepSeekConfigured(settings = {}) {
+  return Boolean(String(settings.deepseekApiKey || '').trim() || settings.cloudDeepseekReady);
+}
+
+export function isOpenRouterConfigured(settings = {}) {
+  return Boolean(String(settings.openrouterApiKey || '').trim() || settings.cloudOpenrouterReady);
+}
+
+export function isAnyAiConfigured(settings = {}) {
+  return isDeepSeekConfigured(settings) || isOpenRouterConfigured(settings);
 }
 
 export function isZeroCostModel(model) {
@@ -170,6 +189,30 @@ export async function fetchFreeOpenRouterModels(
   }
 }
 
+// Deterministic humanizer: strips emojis, double dashes (--), em/en-dashes, while preserving single hyphens in Indonesian reduplicated words (e.g. produk-produk, rata-rata).
+export function humanizeGeneratedText(input) {
+  const raw = String(input ?? '');
+  if (!raw.trim()) return '';
+
+  return raw
+    .replace(/[\p{Extended_Pictographic}\uFE0F]/gu, '')
+    .split(/\r?\n/)
+    .map((line) =>
+      line
+        .replace(/\s*(?:--+|\u2014|\u2015)\s*/g, ', ')
+        .replace(/\s+[\u2013-]\s+/g, ', ')
+        .replace(/([.!?:])\s*,\s*/g, '$1 ')
+        .replace(/,\s*,+/g, ',')
+        .replace(/^,\s*/, '')
+        .replace(/\s*,\s*([.!?])/g, '$1')
+        .replace(/[ \t]{2,}/g, ' ')
+        .trim()
+    )
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function extractFirstJsonObject(text) {
   const cleaned = String(text || '')
     .replace(/<think>[\s\S]*?<\/think>/gi, '')
@@ -239,14 +282,14 @@ export function parseAiResearchResponse(rawContent, modelUsed = DEFAULT_DEEPSEEK
       : 'WARM LEAD';
 
   const defaultScore =
-    leadQualification === 'HOT LEAD' ? 85 : leadQualification === 'COLD LEAD' ? 30 : 60;
+    leadQualification === 'HOT LEAD' ? 85 : leadQualification === 'COLD LEAD' ? 28 : 60;
   const rawScore = Number(parsed.leadScore);
   const leadScore = Number.isFinite(rawScore)
     ? Math.max(0, Math.min(100, Math.round(rawScore)))
     : defaultScore;
 
-  const digitalPresenceSummary = String(parsed.digitalPresenceSummary || '').trim();
-  const pitchDraft = String(parsed.pitchDraft || '').trim();
+  const digitalPresenceSummary = humanizeGeneratedText(parsed.digitalPresenceSummary);
+  const pitchDraft = humanizeGeneratedText(parsed.pitchDraft);
 
   if (!digitalPresenceSummary || !pitchDraft) {
     throw new OpenRouterClientError(
@@ -258,56 +301,83 @@ export function parseAiResearchResponse(rawContent, modelUsed = DEFAULT_DEEPSEEK
   return {
     leadQualification,
     leadScore,
-    opportunityType: String(parsed.opportunityType || 'Optimasi Kehadiran Digital').trim(),
+    hasOfficialWebsite: Boolean(parsed.hasOfficialWebsite === true),
+    opportunityType:
+      humanizeGeneratedText(parsed.opportunityType) || 'Pembuatan Website Katalog Mandiri',
     digitalPresenceSummary,
-    pitchAngle: String(parsed.pitchAngle || '').trim(),
+    pitchAngle: humanizeGeneratedText(parsed.pitchAngle),
     pitchDraft,
-    followUpDraft: String(parsed.followUpDraft || '').trim(),
+    followUpDraft: humanizeGeneratedText(parsed.followUpDraft),
     modelUsed: String(modelUsed || DEFAULT_DEEPSEEK_MODEL).trim(),
     analyzedAt: new Date().toISOString(),
   };
 }
 
-function buildLeadPrompt(lead, settings) {
+export function buildLeadPrompt(lead, settings = DEFAULT_AI_SETTINGS) {
   const toneGuide =
     settings.pitchTone === 'formal'
-      ? 'profesional, sopan, dan terstruktur untuk pemilik bisnis/manajer'
+      ? 'sopan, ringkas, dan profesional ala komunikasi bisnis Indonesia ke pemilik usaha, tanpa terdengar kaku seperti surat resmi'
       : settings.pitchTone === 'consultative'
-        ? 'konsultatif, berbasis data ulasan/jejak digital, memberi insight singkat sebelum menawarkan solusi'
-        : 'ramah, natural ala chat WhatsApp Indonesia (sapaan Kak/Bapak/Ibu), singkat, tidak kaku seperti robot spam';
+        ? 'konsultatif berbasis fakta ulasan dan kanal online yang tertera, fokus menawarkan diskusi singkat yang relevan'
+        : 'akrab, santai, dan wajar seperti chat WhatsApp asli dari manusia di Indonesia (sapaan Kak atau Bapak/Ibu sesuai jenis usaha)';
+
+  const webType = classifyWebsiteUrl(lead.website);
+  let websiteContext = 'BELUM PUNYA WEBSITE RESMI';
+  if (webType === 'OWNED_DOMAIN') {
+    websiteContext = `SUDAH PUNYA DOMAIN MANDIRI (${lead.website})`;
+  } else if (webType === 'FREE_BUILDER') {
+    websiteContext = `MASIH PAKAI SUBDOMAIN GRATISAN (${lead.website}, belum punya domain resmi sendiri)`;
+  } else if (lead.website) {
+    websiteContext = `Tautan tercantum bukan website resmi (${lead.website})`;
+  }
 
   // Literal word "json" included intentionally to satisfy DeepSeek strict JSON Output mode requirement.
-  const systemPrompt = `Kamu adalah B2B Lead Qualification & Cold Outreach Specialist untuk "${settings.agencyName || DEFAULT_AI_SETTINGS.agencyName}".
-Layanan utama yang ditawarkan: ${settings.serviceFocus || DEFAULT_AI_SETTINGS.serviceFocus}.
-Gaya bahasa pesan: ${toneGuide}.
+  const systemPrompt = `Kamu adalah Analis Kualifikasi Prospek B2B dan Penulis Pesan WhatsApp untuk "${settings.agencyName || DEFAULT_AI_SETTINGS.agencyName}".
+Fokus layanan yang kamu tawarkan: ${settings.serviceFocus || DEFAULT_AI_SETTINGS.serviceFocus}.
+Target klien utama kami HANYA bisnis aktif yang BELUM memiliki website berdomain resmi sendiri.
 
-Tugasmu menganalisis data prospek bisnis dari Google Maps dan menghasilkan output dalam format json yang valid.
+ATURAN FAKTA DAN ANTI-HALUSINASI (WAJIB DIPATUHI):
+1. Analisis HANYA berdasarkan data Google Maps yang diberikan. Jangan pernah mengarang akun Instagram, Shopee, jumlah pengikut, cabang, atau klaim apa pun yang tidak tertulis di input.
+2. Jika kolom sosial media atau marketplace tertulis kosong, nyatakan secara jujur bahwa tautan tersebut belum tercantum di profil Maps mereka.
 
-Aturan penilaian objektif:
-- HOT LEAD (skor 75-100): Bisnis aktif (ulasan cukup ramai / rating bagus / aktif di Shopee/Tokopedia/Instagram) TETAPI belum punya website resmi, serta punya nomor kontak.
-- WARM LEAD (skor 45-74): Bisnis belum punya website namun ulasan masih sedikit, ATAU sudah punya website sederhana yang berpotensi ditawarkan redesign/SEO/landing page promosi.
-- COLD LEAD (skor 0-44): Sudah punya website korporat matang dan tidak ada celah penawaran jelas, atau data sangat minim tanpa sinyal aktivitas.
+KRITERIA PENILAIAN OBJEKTIF:
+1. HOT LEAD (skor 75 sampai 95): Bisnis lokal aktif yang belum punya domain resmi (termasuk yang masih memakai Linktree, Blogspot, Canva, Instagram, atau Shopee), memiliki reputasi ulasan sehat di Maps, dan punya kontak yang bisa dihubungi.
+2. WARM LEAD (skor 45 sampai 74): Bisnis lokal tanpa website resmi yang memiliki kontak, namun jumlah ulasan masih sedikit sehingga skala usahanya masih berkembang.
+3. COLD LEAD (skor 0 sampai 39): Bisnis yang SUDAH punya website berdomain resmi mandiri, jaringan franchise korporat besar, instansi pemerintah/publik, toko tutup, atau tidak punya jalur kontak sama sekali. Set "hasOfficialWebsite": true jika mereka memang sudah punya domain mandiri.
 
-Wajib balas HANYA dalam json objek murni sesuai struktur berikut tanpa markdown backticks:
+ATURAN GAYA BAHASA HUMANIZER (ANTI GAYA AI):
+1. DILARANG KERAS menggunakan tanda double dash (--), em-dash, maupun tanda strip pemisah kalimat ( - ). Gunakan koma atau titik biasa saja.
+2. DILARANG menggunakan emoji apa pun, daftar poin/bullet list di dalam pesan chat, atau tanda seru berlebihan.
+3. DILARANG menggunakan kalimat klise terjemahan AI seperti: "Di era digital saat ini", "Semoga pesan ini menemui Anda dalam keadaan baik", "Meningkatkan visibilitas secara signifikan", "Solusi terpadu", "Transformasi digital", "Tak dapat dipungkiri", atau "Jangan lewatkan kesempatan".
+4. Panjang "pitchDraft" maksimal 45 sampai 60 kata (cukup 3 sampai 4 kalimat pendek agar nyaman dibaca sekali lihat di layar HP). Gaya bahasa: ${toneGuide}.
+5. Susunan alami "pitchDraft":
+   a. Sapaan singkat yang wajar dan sebut nama usahanya.
+   b. Satu pengamatan spesifik dari data Maps mereka (misal ulasan yang sudah ramai, rating bagus, atau baru mencantumkan sosmed/marketplace tanpa website resmi).
+   c. Manfaat praktis sesuai bidang usahanya (kuliner: menu dan pesan langsung ke WA tanpa potongan aplikasi; jasa/bengkel/klinik/salon: halaman info layanan dan jadwal agar pelanggan dari Google lebih yakin; toko ritel: katalog produk resmi sendiri tanpa tercampur lapak kompetitor), lalu tawarkan izin kirim contoh tampilan singkat tanpa menyebut harga.
+   d. Satu kalimat penutup ringan tanpa paksaan (contoh: kalau saat ini belum butuh tidak apa-apa, abaikan saja).
+6. Panjang "followUpDraft" maksimal 25 kata, sopan menanyakan apakah contoh konsepnya boleh dikirimkan, tanpa memaksa.
+
+Balas HANYA dalam format json objek murni yang valid tanpa markdown backticks:
 {
   "leadQualification": "HOT LEAD" | "WARM LEAD" | "COLD LEAD",
   "leadScore": 85,
-  "opportunityType": "Kategori peluang singkat, misal: Website Katalog Mandiri / Landing Page Jasa / Redesign & SEO Lokal",
-  "digitalPresenceSummary": "1-2 kalimat analisis faktual tentang posisi digital bisnis ini berdasarkan rating, ulasan, website, sosmed, dan marketplace.",
-  "pitchAngle": "1 kalimat strategi sudut masuk penawaran paling tajam untuk bisnis ini.",
-  "pitchDraft": "Pesan WhatsApp pertama siap kirim (maksimal 3-4 kalimat singkat, sebut nama bisnis & detail spesifik seperti rating/kategori/marketplace mereka, akhiri dengan pertanyaan ringan tanpa memaksa).",
-  "followUpDraft": "Pesan follow-up singkat hari ke-3 (1-2 kalimat sopan) jika pesan pertama belum dibalas."
+  "hasOfficialWebsite": false,
+  "opportunityType": "Jenis kebutuhan spesifik 3 sampai 5 kata, contoh: Website Katalog Order WA",
+  "digitalPresenceSummary": "2 kalimat analisis tajam dan faktual mengenai kondisi digital usaha ini beserta alasan skornya, tanpa tanda -- atau em-dash.",
+  "pitchAngle": "1 kalimat alasan bisnis paling relevan kenapa usaha ini terbantu jika punya website resmi sendiri.",
+  "pitchDraft": "Pesan WhatsApp pertama siap kirim yang terdengar seperti diketik manusia asli, 45 sampai 60 kata, tanpa tanda -- atau em-dash.",
+  "followUpDraft": "Pesan sapaan tindak lanjut hari ke-3 yang singkat dan sopan, tanpa tanda -- atau em-dash."
 }`;
 
-  const userPrompt = `Analisis data prospek berikut dan kembalikan hasil dalam json:
-- Nama Bisnis: ${lead.name || '-'}
-- Kategori: ${lead.categoryName || lead.category || 'Bisnis Lokal'}
-- Alamat: ${lead.address || '-'}
-- Rating Maps: ${lead.rating ? `${lead.rating} / 5.0` : 'Belum ada'} (${lead.reviewCount || 0} ulasan)
-- Website Resmi: ${lead.website ? lead.website : 'BELUM ADA WEBSITE'}
-- Sosial Media: ${lead.socialMedia || 'Tidak tercantum di Maps'}
-- Marketplace / Olshop: ${lead.onlineShop || 'Tidak tercantum di Maps'}
-- Kontak WA / Telp: ${lead.whatsapp || lead.phone || 'Tidak ada'}`;
+  const userPrompt = `Analisis prospek Google Maps berikut secara objektif dan kembalikan hasil dalam json:
+Nama Usaha: ${lead.name || '-'}
+Kategori Usaha: ${lead.categoryName || lead.category || 'Usaha Lokal'}
+Alamat: ${lead.address || '-'}
+Rating Google Maps: ${lead.rating ? `${lead.rating} dari 5.0` : 'Belum ada rating'} (${lead.reviewCount || 0} ulasan)
+Status Website di Maps: ${websiteContext}
+Tautan Sosial Media di Maps: ${lead.socialMedia || 'Belum tercantum'}
+Tautan Marketplace di Maps: ${lead.onlineShop || 'Belum tercantum'}
+Kontak Telepon / WA: ${lead.whatsapp || lead.phone || 'Tidak tersedia'}`;
 
   return { systemPrompt, userPrompt };
 }
@@ -320,9 +390,9 @@ export async function analyzeLeadWithDeepSeek(
   const settings = { ...DEFAULT_AI_SETTINGS, ...rawSettings };
   const apiKey = String(settings.deepseekApiKey || settings.apiKey || '').trim();
 
-  if (!apiKey) {
+  if (!apiKey && !settings.cloudDeepseekReady) {
     throw new OpenRouterClientError(
-      'API Key DeepSeek belum diisi. Buka Pengaturan AI untuk memasukkan key DeepSeek Anda.',
+      'API Key DeepSeek belum diisi. Buka Pengaturan AI untuk menyimpan key ke Cloud DB.',
       { code: 'MISSING_API_KEY', status: 400, retryable: false, provider: 'deepseek' }
     );
   }
@@ -406,16 +476,21 @@ export async function analyzeLeadWithOpenRouter(
 ) {
   const settings = { ...DEFAULT_AI_SETTINGS, ...rawSettings };
   const apiKey = String(settings.openrouterApiKey || settings.apiKey || '').trim();
+  const useCloudProxy = !apiKey && Boolean(settings.cloudOpenrouterReady);
 
-  if (!apiKey) {
+  if (!apiKey && !useCloudProxy) {
     throw new OpenRouterClientError(
-      'API Key OpenRouter belum diisi. Buka Pengaturan AI untuk memasukkan key gratis Anda.',
+      'API Key OpenRouter belum diisi. Buka Pengaturan AI untuk menyimpan key gratis ke Cloud DB.',
       { code: 'MISSING_API_KEY', status: 400, retryable: false, provider: 'openrouter' }
     );
   }
 
   const selectedModel = ensureFreeModelId(settings.openrouterModel || settings.model);
   const { systemPrompt, userPrompt } = buildLeadPrompt(lead, settings);
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt },
+  ];
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -423,6 +498,39 @@ export async function analyzeLeadWithOpenRouter(
   if (signal) signal.addEventListener('abort', onAbort, { once: true });
 
   try {
+    if (useCloudProxy) {
+      const res = await fetchImpl(OPENROUTER_PROXY_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: selectedModel,
+          messages,
+        }),
+        signal: controller.signal,
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        const status = res.status || 500;
+        const code =
+          data?.code ||
+          (status === 401
+            ? 'UNAUTHORIZED'
+            : status === 402
+              ? 'PAYMENT_REQUIRED'
+              : status === 429
+                ? 'RATE_LIMITED'
+                : 'UPSTREAM_ERROR');
+        const retryable = status === 402 || status === 429 || status >= 500 || code === 'TIMEOUT';
+        throw new OpenRouterClientError(
+          data?.error || `OpenRouter gagal merespons (${status}).`,
+          { code, status, retryable, provider: 'openrouter' }
+        );
+      }
+
+      return parseAiResearchResponse(data.content || '', data.model || selectedModel);
+    }
+
     const referer =
       typeof window !== 'undefined' && window.location?.origin
         ? window.location.origin
@@ -438,10 +546,7 @@ export async function analyzeLeadWithOpenRouter(
       },
       body: JSON.stringify({
         model: selectedModel,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
+        messages,
         temperature: 0.35,
       }),
       signal: controller.signal,
@@ -516,8 +621,8 @@ export async function analyzeLeadWithOpenRouter(
 
 export function resolveActiveProvider(rawSettings = {}) {
   const settings = { ...DEFAULT_AI_SETTINGS, ...rawSettings };
-  const hasDeepSeek = Boolean(settings.deepseekApiKey?.trim());
-  const hasOpenRouter = Boolean(settings.openrouterApiKey?.trim());
+  const hasDeepSeek = isDeepSeekConfigured(settings);
+  const hasOpenRouter = isOpenRouterConfigured(settings);
   const preferred = settings.primaryProvider === 'openrouter' ? 'openrouter' : 'deepseek';
 
   if (preferred === 'deepseek') {
@@ -533,12 +638,12 @@ export function resolveActiveProvider(rawSettings = {}) {
 
 export async function analyzeLeadWithAi(lead, rawSettings = {}, options = {}) {
   const settings = { ...DEFAULT_AI_SETTINGS, ...rawSettings };
-  const hasDeepSeek = Boolean(settings.deepseekApiKey?.trim());
-  const hasOpenRouter = Boolean(settings.openrouterApiKey?.trim());
+  const hasDeepSeek = isDeepSeekConfigured(settings);
+  const hasOpenRouter = isOpenRouterConfigured(settings);
 
   if (!hasDeepSeek && !hasOpenRouter) {
     throw new OpenRouterClientError(
-      'Belum ada API Key AI yang diisi. Buka Pengaturan AI lalu masukkan API Key DeepSeek atau OpenRouter.',
+      'Belum ada API Key AI yang tersimpan. Buka Pengaturan AI lalu simpan API Key DeepSeek atau OpenRouter.',
       { code: 'MISSING_API_KEY', status: 400, retryable: false }
     );
   }
@@ -626,7 +731,36 @@ function normalizeSettingsObject(parsed = {}) {
     pitchTone: ['casual', 'consultative', 'formal'].includes(parsed.pitchTone)
       ? parsed.pitchTone
       : 'casual',
+    cloudDeepseekReady: Boolean(parsed.cloudDeepseekReady),
+    cloudDeepseekMask: String(parsed.cloudDeepseekMask || ''),
+    cloudOpenrouterReady: Boolean(parsed.cloudOpenrouterReady),
+    cloudOpenrouterMask: String(parsed.cloudOpenrouterMask || ''),
   };
+}
+
+export function mergeCloudAndLocalAiSettings(cloudSettings = null, localSettings = {}) {
+  const localNorm = normalizeSettingsObject(localSettings);
+  if (!cloudSettings) {
+    return localNorm;
+  }
+
+  return normalizeSettingsObject({
+    ...localNorm,
+    primaryProvider: cloudSettings.primaryProvider || localNorm.primaryProvider,
+    autoFallback:
+      typeof cloudSettings.autoFallback === 'boolean'
+        ? cloudSettings.autoFallback
+        : localNorm.autoFallback,
+    deepseekModel: cloudSettings.deepseekModel || localNorm.deepseekModel,
+    openrouterModel: cloudSettings.openrouterModel || localNorm.openrouterModel,
+    agencyName: cloudSettings.agencyName || localNorm.agencyName,
+    serviceFocus: cloudSettings.serviceFocus || localNorm.serviceFocus,
+    pitchTone: cloudSettings.pitchTone || localNorm.pitchTone,
+    cloudDeepseekReady: Boolean(cloudSettings.cloudDeepseekReady),
+    cloudDeepseekMask: cloudSettings.cloudDeepseekMask || '',
+    cloudOpenrouterReady: Boolean(cloudSettings.cloudOpenrouterReady),
+    cloudOpenrouterMask: cloudSettings.cloudOpenrouterMask || '',
+  });
 }
 
 export function subscribeAiSettings(listener) {
