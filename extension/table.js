@@ -65,7 +65,7 @@ let isBulkRunning = false;
 // Default konfigurasi AI & Dashboard
 const DEFAULT_AI_CONFIG = {
   provider: 'deepseek',
-  apiKey: 'sk-34bfff0ba1494b3fa81e494b7b2535d1',
+  apiKey: '',
   model: 'deepseek-chat',
   dashboardUrl: 'http://localhost:3000'
 };
