@@ -14,7 +14,7 @@ Repositori ini terdiri dari dua bagian utama:
 
 ## 🚀 Download Cepat (Untuk Pengguna Non-Developer)
 
-Jika Anda hanya ingin menggunakan ekstensinya tanpa perlu melihat kodenya, silakan **[Download gmaps-leadgen-extension-v1.0.0.zip](gmaps-leadgen-extension-v1.0.0.zip)**.
+Jika Anda hanya ingin menggunakan ekstensinya tanpa perlu melihat kodenya, silakan **[Download gmaps-leadgen-extension.zip](web-dashboard/public/gmaps-leadgen-extension.zip)**.
 
 **Cara Install ZIP:**
 1. Ekstrak file ZIP yang didownload.

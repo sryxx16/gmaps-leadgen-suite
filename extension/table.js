@@ -64,12 +64,32 @@ let isBulkRunning = false;
 
 // Default konfigurasi AI & Dashboard
 const DEFAULT_AI_CONFIG = {
-  provider: 'deepseek',
-  apiKey: 'sk-34bfff0ba1494b3fa81e494b7b2535d1',
-  model: 'deepseek-chat',
+  provider: 'openrouter',
+  apiKey: '',
+  model: 'openrouter/free',
   dashboardUrl: 'http://localhost:3000'
 };
 let currentAiConfig = { ...DEFAULT_AI_CONFIG };
+
+function resolveDefaultModel(provider) {
+  if (provider === 'openrouter') return 'openrouter/free';
+  if (provider === 'deepseek') return 'deepseek-chat';
+  return 'gemini-1.5-flash';
+}
+
+function extractCleanJson(rawText) {
+  const cleaned = String(rawText || '')
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/```json/gi, '')
+    .replace(/```/g, '')
+    .trim();
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start !== -1 && end > start) {
+    return JSON.parse(cleaned.slice(start, end + 1));
+  }
+  return JSON.parse(cleaned || '{}');
+}
 
 // Normalisasi nomor telepon lokal Indonesia ke format wa.me (628...)
 function normalizePhoneForWa(phone) {
@@ -466,7 +486,33 @@ Berikan analisis jejak online toko ini dalam format JSON MURNI tanpa markdown/ba
   "pitchDraft": "Halo kak [Nama Toko], salam kenal dari tim Web Dev. Kami lihat toko kakak di [Alamat] sudah ramai ulasan dan aktif di [Sosmed/Shopee]. Apakah tertarik dibuatkan website katalog resmi mandiri agar pelanggan lebih mudah order dan hemat komisi marketplace? Boleh kami kirimkan contoh demonya kak?"
 }`;
 
-  if (config.provider === 'deepseek') {
+  if (config.provider === 'openrouter') {
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.apiKey}`,
+        'HTTP-Referer': config.dashboardUrl || 'http://localhost:3000',
+        'X-Title': 'GMaps Lead Finder Extension'
+      },
+      body: JSON.stringify({
+        model: 'openrouter/free',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Lakukan riset web dan kualifikasi untuk toko: ${lead.name} di ${lead.address}` }
+        ],
+        temperature: 0.3
+      })
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`OpenRouter Error (${res.status}): ${errText}`);
+    }
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content || '{}';
+    return extractCleanJson(text);
+  } else if (config.provider === 'deepseek') {
     const res = await fetch('https://api.deepseek.com/chat/completions', {
       method: 'POST',
       headers: {
@@ -682,7 +728,7 @@ bulkAiBtn.addEventListener('click', async () => {
 
 // AI & Dashboard Settings Modal
 aiSettingsBtn.addEventListener('click', () => {
-  aiProviderSelect.value = currentAiConfig.provider || 'deepseek';
+  aiProviderSelect.value = currentAiConfig.provider || 'openrouter';
   aiApiKeyInput.value = currentAiConfig.apiKey || '';
   if (dashboardUrlInput) dashboardUrlInput.value = currentAiConfig.dashboardUrl || 'http://localhost:3000';
   aiTestStatus.style.display = 'none';
@@ -696,7 +742,7 @@ aiSettingsCloseBtn.addEventListener('click', () => {
 aiSaveSettingsBtn.addEventListener('click', async () => {
   currentAiConfig.provider = aiProviderSelect.value;
   currentAiConfig.apiKey = aiApiKeyInput.value.trim();
-  currentAiConfig.model = currentAiConfig.provider === 'deepseek' ? 'deepseek-chat' : 'gemini-1.5-flash';
+  currentAiConfig.model = resolveDefaultModel(currentAiConfig.provider);
   if (dashboardUrlInput) {
     currentAiConfig.dashboardUrl = (dashboardUrlInput.value.trim() || 'http://localhost:3000').replace(/\/+$/, '');
     if (dashboardLinkBtn) dashboardLinkBtn.href = currentAiConfig.dashboardUrl;
@@ -720,20 +766,20 @@ aiTestBtn.addEventListener('click', async () => {
 
   aiTestStatus.style.display = 'block';
   aiTestStatus.style.color = '#4338ca';
-  aiTestStatus.textContent = '⏳ Menguji koneksi ke server AI...';
+  aiTestStatus.textContent = 'Menguji koneksi ke server AI...';
 
   try {
     const dummy = { name: 'Toko Sepatu Berkah', category: 'Toko Sepatu', address: 'Bogor', phone: '08123456789' };
-    const res = await callAiResearchApi(dummy, { provider, apiKey, model: provider === 'deepseek' ? 'deepseek-chat' : 'gemini-1.5-flash' });
+    const res = await callAiResearchApi(dummy, { provider, apiKey, model: resolveDefaultModel(provider) });
     if (res && res.leadQualification) {
       aiTestStatus.style.color = '#15803d';
-      aiTestStatus.textContent = `✅ Berhasil terhubung! Kualifikasi uji coba: ${res.leadQualification}`;
+      aiTestStatus.textContent = `Berhasil terhubung! Kualifikasi uji coba: ${res.leadQualification}`;
     } else {
       throw new Error('Format respon tidak sesuai');
     }
   } catch (err) {
     aiTestStatus.style.color = '#dc2626';
-    aiTestStatus.textContent = `❌ Gagal: ${err.message}`;
+    aiTestStatus.textContent = `Gagal: ${err.message}`;
   }
 });
 
