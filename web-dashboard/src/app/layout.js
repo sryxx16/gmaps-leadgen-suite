@@ -3,8 +3,8 @@ import Navbar from '@/components/Navbar';
 import './globals.css';
 
 export const metadata = {
-  title: 'GMaps LeadGen — Dashboard Prospek Google Maps & OpenRouter AI',
-  description: 'Dashboard kelola data prospek Google Maps terintegrasi OpenRouter AI gratis dan ekstensi scraper',
+  title: 'GMaps LeadGen | Dashboard Prospek Google Maps & AI',
+  description: 'Dashboard kelola data prospek Google Maps terintegrasi DeepSeek dan OpenRouter AI beserta ekstensi scraper',
 };
 
 export const viewport = {

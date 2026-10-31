@@ -11,7 +11,13 @@ import {
 } from '@/lib/openrouter';
 
 export default function AiSettingsModal({ settings, onClose, onSave }) {
-  const [form, setForm] = useState(() => ({ ...settings }));
+  const [form, setForm] = useState(() => ({
+    ...settings,
+    deepseekApiKey: settings?.deepseekApiKey || '',
+    openrouterApiKey: settings?.openrouterApiKey || '',
+    clearDeepseekKey: false,
+    clearOpenrouterKey: false,
+  }));
   const [activeConfigTab, setActiveConfigTab] = useState(
     () => (settings?.primaryProvider === 'openrouter' ? 'openrouter' : 'deepseek')
   );
@@ -22,6 +28,8 @@ export default function AiSettingsModal({ settings, onClose, onSave }) {
   const [modelsNote, setModelsNote] = useState('');
   const [testingProvider, setTestingProvider] = useState(null); // 'deepseek' | 'openrouter' | null
   const [testResult, setTestResult] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -31,7 +39,7 @@ export default function AiSettingsModal({ settings, onClose, onSave }) {
       setModels(res.models);
       setModelsNote(
         res.fromFallback
-          ? 'Menggunakan daftar model gratis bawaan (offline/fallback).'
+          ? 'Menggunakan daftar model gratis bawaan (fallback).'
           : `${res.models.length} model gratis aktif dimuat dari OpenRouter.`
       );
       setLoadingModels(false);
@@ -41,6 +49,12 @@ export default function AiSettingsModal({ settings, onClose, onSave }) {
       cancelled = true;
     };
   }, [settings?.openrouterApiKey]);
+
+  const cloudDeepseekActive = Boolean(form.cloudDeepseekReady && !form.clearDeepseekKey);
+  const cloudOpenrouterActive = Boolean(form.cloudOpenrouterReady && !form.clearOpenrouterKey);
+
+  const hasDeepseekKey = Boolean(form.deepseekApiKey?.trim() || cloudDeepseekActive);
+  const hasOpenrouterKey = Boolean(form.openrouterApiKey?.trim() || cloudOpenrouterActive);
 
   const handleRefreshModels = async () => {
     if (loadingModels) return;
@@ -57,17 +71,22 @@ export default function AiSettingsModal({ settings, onClose, onSave }) {
   };
 
   const handleTest = async (provider) => {
-    if (testingProvider) return;
+    if (testingProvider || saving) return;
     setTestingProvider(provider);
     setTestResult(null);
 
     try {
-      const res = await testAiProviderConnection(provider, form);
+      const testSettings = {
+        ...form,
+        cloudDeepseekReady: cloudDeepseekActive,
+        cloudOpenrouterReady: cloudOpenrouterActive,
+      };
+      const res = await testAiProviderConnection(provider, testSettings);
       const label = provider === 'deepseek' ? 'DeepSeek' : 'OpenRouter Free';
       setTestResult({
         ok: true,
         provider,
-        text: `${label} terhubung (${res.latencyMs} ms) memakai ${res.modelUsed} — sampel: ${res.qualification}.`,
+        text: `${label} terhubung (${res.latencyMs} ms) memakai ${res.modelUsed}, sampel: ${res.qualification}.`,
       });
     } catch (err) {
       setTestResult({
@@ -86,33 +105,76 @@ export default function AiSettingsModal({ settings, onClose, onSave }) {
     setTestResult(null);
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    onSave(form);
+  const executeCloudSave = async () => {
+    if (saving) return;
+    setSaving(true);
+    setSaveError('');
+
+    try {
+      const res = await fetch('/api/ai/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          primaryProvider: form.primaryProvider,
+          autoFallback: form.autoFallback,
+          deepseekApiKey: form.deepseekApiKey?.trim() || '',
+          clearDeepseekKey: Boolean(form.clearDeepseekKey),
+          deepseekModel: form.deepseekModel,
+          openrouterApiKey: form.openrouterApiKey?.trim() || '',
+          clearOpenrouterKey: Boolean(form.clearOpenrouterKey),
+          openrouterModel: form.openrouterModel,
+          agencyName: form.agencyName,
+          serviceFocus: form.serviceFocus,
+          pitchTone: form.pitchTone,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success || !data.settings) {
+        throw new Error(data.error || `Gagal menyimpan ke database Neon (HTTP ${res.status}).`);
+      }
+
+      onSave(data.settings, { mode: 'cloud' });
+    } catch (err) {
+      setSaveError(
+        err?.message || 'Tidak dapat menyimpan pengaturan ke Cloud Neon DB. Periksa koneksi database.'
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const hasDeepseekKey = Boolean(form.deepseekApiKey?.trim());
-  const hasOpenrouterKey = Boolean(form.openrouterApiKey?.trim());
+  const handleSaveLocalFallback = () => {
+    onSave(form, { mode: 'local' });
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    executeCloudSave();
+  };
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-sm"
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget && !saving) onClose();
       }}
     >
       <div className="clean-card w-full sm:max-w-xl rounded-t-2xl sm:rounded-2xl max-h-[92dvh] flex flex-col shadow-2xl overflow-hidden">
         <div className="px-5 py-4 border-b border-zinc-800 flex items-start justify-between gap-3 shrink-0">
           <div>
-            <h2 className="text-base font-bold text-white">Pengaturan Provider AI (DeepSeek &amp; OpenRouter)</h2>
+            <h2 className="text-base font-bold text-white">
+              Pengaturan Provider AI Bersama (Cloud Neon DB)
+            </h2>
             <p className="text-xs text-zinc-400 mt-0.5">
-              Setiap provider memiliki slot API Key terpisah sehingga tidak saling menimpa.
+              API Key disimpan terenkripsi ke Neon Postgres agar langsung aktif untuk seluruh rekan tim.
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800/80 transition-colors"
+            disabled={saving}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800/80 transition-colors disabled:opacity-40"
             aria-label="Tutup modal pengaturan AI"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -150,7 +212,7 @@ export default function AiSettingsModal({ settings, onClose, onSave }) {
                     </span>
                   </div>
                   <p className="text-[11px] text-zinc-400 mt-1">
-                    Cepat, JSON stabil (DeepSeek V3 / R1), tanpa antrean panjang.
+                    Cepat, JSON stabil (DeepSeek V3 / R1), dibagi otomatis lewat Cloud DB.
                   </p>
                 </button>
 
@@ -175,7 +237,7 @@ export default function AiSettingsModal({ settings, onClose, onSave }) {
                     </span>
                   </div>
                   <p className="text-[11px] text-zinc-400 mt-1">
-                    Khusus model gratis (:free), cocok untuk cadangan nol biaya.
+                    Khusus model gratis (:free), cocok sebagai cadangan nol biaya.
                   </p>
                 </button>
               </div>
@@ -194,7 +256,7 @@ export default function AiSettingsModal({ settings, onClose, onSave }) {
                     Aktifkan Auto-Fallback Pintar (Anti-Bentrok)
                   </span>
                   <span className="text-[11px] text-zinc-400 block leading-relaxed">
-                    Jika keduanya terisi dan provider utama kehabisan saldo (402) atau terkena rate-limit (429), otomatis beralih ke provider cadangan.
+                    Jika keduanya tersimpan dan provider utama kehabisan saldo (402) atau terkena rate-limit (429), otomatis beralih ke provider cadangan.
                   </span>
                 </div>
               </label>
@@ -250,10 +312,47 @@ export default function AiSettingsModal({ settings, onClose, onSave }) {
 
               {activeConfigTab === 'deepseek' ? (
                 <div className="p-3.5 rounded-xl bg-[#18181b] border border-zinc-800 space-y-3">
+                  {cloudDeepseekActive && !form.deepseekApiKey && (
+                    <div className="p-2.5 rounded-lg bg-emerald-950/35 border border-emerald-900/70 flex items-center justify-between gap-2 text-[11px]">
+                      <span className="text-emerald-200">
+                        Key aktif di Cloud Neon:{' '}
+                        <code className="font-mono text-emerald-100">
+                          {form.cloudDeepseekMask || 'Tersimpan'}
+                        </code>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((prev) => ({
+                            ...prev,
+                            clearDeepseekKey: true,
+                            deepseekApiKey: '',
+                          }))
+                        }
+                        className="px-2 py-0.5 rounded bg-zinc-900 hover:bg-rose-950/70 text-zinc-300 hover:text-rose-200 border border-zinc-700 transition-colors shrink-0"
+                      >
+                        Hapus dari Cloud
+                      </button>
+                    </div>
+                  )}
+
+                  {form.clearDeepseekKey && !form.deepseekApiKey && (
+                    <div className="p-2.5 rounded-lg bg-amber-950/35 border border-amber-900/70 flex items-center justify-between gap-2 text-[11px] text-amber-200">
+                      <span>Key DeepSeek di Cloud akan dihapus saat Anda menekan Simpan.</span>
+                      <button
+                        type="button"
+                        onClick={() => setForm((prev) => ({ ...prev, clearDeepseekKey: false }))}
+                        className="underline hover:text-white shrink-0"
+                      >
+                        Urungkan
+                      </button>
+                    </div>
+                  )}
+
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between gap-2">
                       <label htmlFor="ds-api-key" className="font-medium text-zinc-200">
-                        DeepSeek API Key
+                        {cloudDeepseekActive ? 'Ganti DeepSeek API Key (Opsional)' : 'DeepSeek API Key'}
                       </label>
                       <a
                         href="https://platform.deepseek.com/api_keys"
@@ -270,9 +369,17 @@ export default function AiSettingsModal({ settings, onClose, onSave }) {
                         type={showDeepseekKey ? 'text' : 'password'}
                         value={form.deepseekApiKey || ''}
                         onChange={(e) =>
-                          setForm((prev) => ({ ...prev, deepseekApiKey: e.target.value }))
+                          setForm((prev) => ({
+                            ...prev,
+                            deepseekApiKey: e.target.value,
+                            clearDeepseekKey: false,
+                          }))
                         }
-                        placeholder="sk-..."
+                        placeholder={
+                          cloudDeepseekActive
+                            ? 'Kosongkan untuk tetap memakai key Cloud saat ini...'
+                            : 'sk-...'
+                        }
                         className="w-full px-3.5 py-2.5 pr-28 clean-input rounded-xl font-mono text-xs bg-[#121215]"
                       />
                       <div className="absolute inset-y-0 right-0 flex items-center pr-2 gap-1">
@@ -284,7 +391,7 @@ export default function AiSettingsModal({ settings, onClose, onSave }) {
                             }
                             className="px-2 py-1 text-[11px] text-zinc-500 hover:text-rose-300"
                           >
-                            Hapus
+                            Bersihkan
                           </button>
                         )}
                         <button
@@ -320,7 +427,7 @@ export default function AiSettingsModal({ settings, onClose, onSave }) {
 
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[11px] text-zinc-500">
-                      Diproses via proxy terautentikasi server (bebas kendala CORS).
+                      Diproses via server terautentikasi dan terenkripsi di Neon DB.
                     </span>
                     <button
                       type="button"
@@ -339,10 +446,49 @@ export default function AiSettingsModal({ settings, onClose, onSave }) {
                 </div>
               ) : (
                 <div className="p-3.5 rounded-xl bg-[#18181b] border border-zinc-800 space-y-3">
+                  {cloudOpenrouterActive && !form.openrouterApiKey && (
+                    <div className="p-2.5 rounded-lg bg-emerald-950/35 border border-emerald-900/70 flex items-center justify-between gap-2 text-[11px]">
+                      <span className="text-emerald-200">
+                        Key aktif di Cloud Neon:{' '}
+                        <code className="font-mono text-emerald-100">
+                          {form.cloudOpenrouterMask || 'Tersimpan'}
+                        </code>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((prev) => ({
+                            ...prev,
+                            clearOpenrouterKey: true,
+                            openrouterApiKey: '',
+                          }))
+                        }
+                        className="px-2 py-0.5 rounded bg-zinc-900 hover:bg-rose-950/70 text-zinc-300 hover:text-rose-200 border border-zinc-700 transition-colors shrink-0"
+                      >
+                        Hapus dari Cloud
+                      </button>
+                    </div>
+                  )}
+
+                  {form.clearOpenrouterKey && !form.openrouterApiKey && (
+                    <div className="p-2.5 rounded-lg bg-amber-950/35 border border-amber-900/70 flex items-center justify-between gap-2 text-[11px] text-amber-200">
+                      <span>Key OpenRouter di Cloud akan dihapus saat Anda menekan Simpan.</span>
+                      <button
+                        type="button"
+                        onClick={() => setForm((prev) => ({ ...prev, clearOpenrouterKey: false }))}
+                        className="underline hover:text-white shrink-0"
+                      >
+                        Urungkan
+                      </button>
+                    </div>
+                  )}
+
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between gap-2">
                       <label htmlFor="or-api-key" className="font-medium text-zinc-200">
-                        OpenRouter API Key
+                        {cloudOpenrouterActive
+                          ? 'Ganti OpenRouter API Key (Opsional)'
+                          : 'OpenRouter API Key'}
                       </label>
                       <a
                         href="https://openrouter.ai/settings/keys"
@@ -359,9 +505,17 @@ export default function AiSettingsModal({ settings, onClose, onSave }) {
                         type={showOpenrouterKey ? 'text' : 'password'}
                         value={form.openrouterApiKey || ''}
                         onChange={(e) =>
-                          setForm((prev) => ({ ...prev, openrouterApiKey: e.target.value }))
+                          setForm((prev) => ({
+                            ...prev,
+                            openrouterApiKey: e.target.value,
+                            clearOpenrouterKey: false,
+                          }))
                         }
-                        placeholder="sk-or-v1-..."
+                        placeholder={
+                          cloudOpenrouterActive
+                            ? 'Kosongkan untuk tetap memakai key Cloud saat ini...'
+                            : 'sk-or-v1-...'
+                        }
                         className="w-full px-3.5 py-2.5 pr-28 clean-input rounded-xl font-mono text-xs bg-[#121215]"
                       />
                       <div className="absolute inset-y-0 right-0 flex items-center pr-2 gap-1">
@@ -373,7 +527,7 @@ export default function AiSettingsModal({ settings, onClose, onSave }) {
                             }
                             className="px-2 py-1 text-[11px] text-zinc-500 hover:text-rose-300"
                           >
-                            Hapus
+                            Bersihkan
                           </button>
                         )}
                         <button
@@ -516,9 +670,35 @@ export default function AiSettingsModal({ settings, onClose, onSave }) {
               </div>
             </div>
 
+            {saveError && (
+              <div
+                role="alert"
+                className="p-3 rounded-xl bg-rose-950/40 border border-rose-900/70 text-rose-200 space-y-2"
+              >
+                <p className="leading-relaxed">{saveError}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={executeCloudSave}
+                    disabled={saving}
+                    className="px-3 py-1 rounded-lg bg-rose-900/60 hover:bg-rose-900 text-rose-100 font-semibold transition-colors"
+                  >
+                    Coba Simpan Cloud Lagi
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveLocalFallback}
+                    className="px-3 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-zinc-700 font-medium transition-colors"
+                  >
+                    Simpan di Browser Ini Saja (Fallback)
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* 4. STORAGE LOCATION EXPLANATION */}
             <div className="p-3 rounded-xl bg-zinc-900/70 border border-zinc-800/80 text-[11px] text-zinc-400 leading-relaxed">
-              <strong className="text-zinc-200">Lokasi Penyimpanan Data:</strong> Kedua API Key &amp; profil penawaran di atas disimpan lokal hanya di browser perangkat Anda (<code className="text-zinc-300">localStorage</code> — tidak pernah masuk ke Git atau dilihat perangkat lain). Sedangkan <strong className="text-zinc-200">hasil riset AI &amp; draft WA</strong> disimpan permanen ke database Cloud Neon Postgres.
+              <strong className="text-zinc-200">Sinkronisasi Tim Otomatis:</strong> Begitu salah satu rekan tim menyimpan API Key di sini, key dienkripsi dengan AES-256-GCM ke tabel <code className="text-zinc-300">AppSetting</code> di Neon Postgres sehingga perangkat lain yang login otomatis siap menjalankan analisis tanpa perlu input ulang.
             </div>
           </div>
 
@@ -526,15 +706,20 @@ export default function AiSettingsModal({ settings, onClose, onSave }) {
             <button
               type="button"
               onClick={onClose}
-              className="px-3.5 py-2 rounded-xl text-xs font-medium text-zinc-400 hover:text-white transition-colors"
+              disabled={saving}
+              className="px-3.5 py-2 rounded-xl text-xs font-medium text-zinc-400 hover:text-white transition-colors disabled:opacity-40"
             >
               Batal
             </button>
             <button
               type="submit"
-              className="px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-100 hover:bg-white text-zinc-950 transition-colors shadow-sm"
+              disabled={saving}
+              className="px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-100 hover:bg-white text-zinc-950 transition-colors shadow-sm disabled:opacity-40 inline-flex items-center gap-2"
             >
-              Simpan Pengaturan
+              {saving && (
+                <span className="w-3 h-3 border-2 border-zinc-600/40 border-t-zinc-950 rounded-full animate-spin" />
+              )}
+              <span>{saving ? 'Menyimpan ke Cloud...' : 'Simpan ke Cloud DB'}</span>
             </button>
           </div>
         </form>

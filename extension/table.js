@@ -1,5 +1,5 @@
 // table.js
-// GMaps Lead Finder - 8-Column Controller with AI Web Research & Persistence
+// GMaps Lead Finder - 8-Column Controller with Grounded Humanizer AI Research & Persistence
 
 const tbody = document.getElementById('tbody');
 const summary = document.getElementById('summary');
@@ -84,6 +84,41 @@ function resolveDefaultModel(provider) {
   return 'gemini-1.5-flash';
 }
 
+function humanizeExtText(input) {
+  const raw = String(input ?? '');
+  if (!raw.trim()) return '';
+  return raw
+    .replace(/[\p{Extended_Pictographic}\uFE0F]/gu, '')
+    .split(/\r?\n/)
+    .map((line) =>
+      line
+        .replace(/\s*(?:--+|\u2014|\u2015)\s*/g, ', ')
+        .replace(/\s+[\u2013-]\s+/g, ', ')
+        .replace(/([.!?:])\s*,\s*/g, '$1 ')
+        .replace(/,\s*,+/g, ',')
+        .replace(/^,\s*/, '')
+        .replace(/\s*,\s*([.!?])/g, '$1')
+        .replace(/[ \t]{2,}/g, ' ')
+        .trim()
+    )
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function sanitizeAiResult(parsed) {
+  const obj = parsed && typeof parsed === 'object' ? parsed : {};
+  return {
+    ...obj,
+    hasOfficialWebsite: Boolean(obj.hasOfficialWebsite === true),
+    leadQualification: String(obj.leadQualification || 'WARM LEAD').toUpperCase(),
+    digitalPresenceSummary: humanizeExtText(obj.digitalPresenceSummary),
+    pitchAngle: humanizeExtText(obj.pitchAngle),
+    pitchDraft: humanizeExtText(obj.pitchDraft),
+    followUpDraft: humanizeExtText(obj.followUpDraft),
+  };
+}
+
 function extractCleanJson(rawText) {
   const cleaned = String(rawText || '')
     .replace(/<think>[\s\S]*?<\/think>/gi, '')
@@ -93,9 +128,9 @@ function extractCleanJson(rawText) {
   const start = cleaned.indexOf('{');
   const end = cleaned.lastIndexOf('}');
   if (start !== -1 && end > start) {
-    return JSON.parse(cleaned.slice(start, end + 1));
+    return sanitizeAiResult(JSON.parse(cleaned.slice(start, end + 1)));
   }
-  return JSON.parse(cleaned || '{}');
+  return sanitizeAiResult(JSON.parse(cleaned || '{}'));
 }
 
 // Normalisasi nomor telepon lokal Indonesia ke format wa.me (628...)
@@ -127,7 +162,6 @@ function updateStorageBadge(text = 'Tersimpan di Storage') {
   }
 }
 
-// Cek apakah URL adalah sosial media
 function isSocialMediaUrl(url) {
   if (!url) return false;
   const lower = url.toLowerCase();
@@ -152,11 +186,11 @@ function isSocialMediaUrl(url) {
     lower.includes('bio.link') ||
     lower.includes('taplink.cc') ||
     lower.includes('lynk.id') ||
-    lower.includes('msha.ke')
+    lower.includes('msha.ke') ||
+    lower.includes('desty.page')
   );
 }
 
-// Cek apakah URL adalah online shop / marketplace (termasuk shortlink seperti shope.ee / shp.ee)
 function isOnlineShopUrl(url) {
   if (!url) return false;
   const lower = url.toLowerCase();
@@ -180,35 +214,66 @@ function isOnlineShopUrl(url) {
   );
 }
 
-// BERSINKAN DATA TANPA MEMBUANG SOSMED / ONLINE SHOP
+function isFreeBuilderUrl(url) {
+  if (!url) return false;
+  const lower = url.toLowerCase();
+  return (
+    lower.includes('blogspot.') ||
+    lower.includes('wordpress.com') ||
+    lower.includes('sites.google.com') ||
+    lower.includes('business.site') ||
+    lower.includes('my.canva.site') ||
+    lower.includes('canva.site') ||
+    lower.includes('carrd.co') ||
+    lower.includes('wixsite.com') ||
+    lower.includes('weebly.com') ||
+    lower.includes('zyrosite.com') ||
+    lower.includes('000webhostapp.com') ||
+    lower.includes('github.io') ||
+    lower.includes('netlify.app') ||
+    lower.includes('vercel.app') ||
+    lower.includes('berdu.pw')
+  );
+}
+
+// BERSIHKAN DATA TANPA MEMBUANG SOSMED / ONLINE SHOP
 function cleanLead(l) {
-  let name = (l.name || '')
+  const rawName = String(l.name || '');
+  const rawAddr = String(l.address || '');
+  const detectedClosed =
+    Boolean(l.isClosed) ||
+    /\b(?:tutup permanen|permanently closed|tutup sementara|temporarily closed)\b/i.test(
+      `${rawName} ${rawAddr}`
+    );
+
+  let name = rawName
     .replace(/[·\•]\s*(?:Link yang dikunjungi|Visited link|Ditampilkan|Promosi|Iklan|Ad)\b.*/i, '')
     .replace(/^(?:Link yang dikunjungi|Visited link)[·\•\s]*/i, '')
     .replace(/\s*[·\•]\s*$/, '')
     .trim();
 
+  if (detectedClosed && !/tutup permanen|tutup sementara/i.test(name)) {
+    name = `${name} (Tutup Permanen)`;
+  }
+
   let website = (l.website || '').trim();
   let phone = (l.phone || '').trim();
   let whatsapp = (l.whatsapp || '').trim();
-  let address = (l.address || '').trim();
+  let address = rawAddr.trim();
   let socialMedia = (l.socialMedia || '').trim();
   let onlineShop = (l.onlineShop || '').trim();
-  let aiResearch = l.aiResearch || null;
+  let aiResearch = l.aiResearch ? sanitizeAiResult(l.aiResearch) : null;
 
-  // Jika website mengandung link sosmed, pindahkan ke socialMedia
   if (isSocialMediaUrl(website)) {
     if (!socialMedia) socialMedia = website;
     website = '';
   }
 
-  // Jika website mengandung link marketplace (seperti shope.ee / shp.ee), pindahkan ke onlineShop
   if (isOnlineShopUrl(website)) {
     if (!onlineShop) onlineShop = website;
     website = '';
   }
 
-  // Jika website mengandung link wa.me atau whatsapp.com, pindahkan ke nomor whatsapp
   const lowerWeb = website.toLowerCase();
   if (lowerWeb.includes('wa.me') || lowerWeb.includes('whatsapp.com')) {
     const waMatch = website.match(/(?:wa\.me\/|phone=)(?:62|0)?(\d+)/);
@@ -216,7 +281,6 @@ function cleanLead(l) {
     website = '';
   }
 
-  // Jika whatsapp kosong tapi phone adalah nomor HP Indonesia (08... atau 628...), set whatsapp = phone
   if (!whatsapp && phone) {
     const digits = phone.replace(/[^\d]/g, '');
     if (digits.startsWith('08') || digits.startsWith('628') || digits.startsWith('8')) {
@@ -224,21 +288,34 @@ function cleanLead(l) {
     }
   }
 
-  // Hapus domain Google dari slot website
-  if (lowerWeb.includes('google.') || lowerWeb.includes('gstatic.') || lowerWeb.includes('waze.')) {
+  const thirdPartyDomains = [
+    'google.',
+    'gstatic.',
+    'waze.',
+    'traveloka.',
+    'tiket.com',
+    'agoda.',
+    'booking.com',
+    'pergikuliner.',
+    'zomato.',
+    'chope.',
+    'halodoc.',
+    'alodokter.',
+    'tripadvisor.',
+    'yelp.'
+  ];
+  if (thirdPartyDomains.some((d) => lowerWeb.includes(d))) {
     website = '';
   }
 
-  // Bersihkan alamat dari artefak jam buka/tutup
   address = address
-    .replace(/[·\s]*(?:Buka|Tutup|Segera)\s*[·\-–—]?\s*(?:Tutup|Buka|Segera)?\s*(?:pukul)?\s*\d{1,2}[\.:]?\d{0,2}(?:\s*[–\-]\s*\d{1,2}[\.:]?\d{0,2})?/gi, '')
+    .replace(/[·\s]*(?:Buka|Tutup|Segera)\s*[·\-\u2013\u2014]?\s*(?:Tutup|Buka|Segera)?\s*(?:pukul)?\s*\d{1,2}[\.:]?\d{0,2}(?:\s*[\u2013\-]\s*\d{1,2}[\.:]?\d{0,2})?/gi, '')
     .replace(/[·\s]*(?:Buka|Tutup|Segera)\s*(?:24 jam|sementara|selamanya|permanen)?/gi, '')
     .replace(/(?:Buka|Tutup|Segera)$/gi, '')
     .replace(/\b(?:Buka|Tutup|Segera)\b/gi, '')
-    .replace(/^[\s·\-–—,;]+|[\s·\-–—,;]+$/g, '')
+    .replace(/^[\s·\-\u2013\u2014,;]+|[\s·\-\u2013\u2014,;]+$/g, '')
     .trim();
 
-  // Validasi rating desimal (1.0 - 5.0)
   let rating = (l.rating || '').toString().trim();
   if (rating) {
     const rVal = parseFloat(rating.replace(',', '.'));
@@ -248,7 +325,8 @@ function cleanLead(l) {
 
   let reviewCount = (l.reviewCount || '').toString().trim();
 
-  const hasWebsite = !!website && website.includes('.');
+  // Subdomain gratisan (blogspot, canva, sites.google) tetap dihitung belum punya domain mandiri
+  const hasWebsite = Boolean(website && website.includes('.') && !isFreeBuilderUrl(website));
 
   return {
     ...l,
@@ -262,11 +340,11 @@ function cleanLead(l) {
     socialMedia,
     onlineShop,
     aiResearch,
-    hasWebsite
+    hasWebsite,
+    isClosed: detectedClosed
   };
 }
 
-// Format Pill Sosmed & Olshop (Clean UI, tanpa emoji)
 function renderSocialOlshopCell(lead) {
   const pills = [];
 
@@ -298,18 +376,6 @@ function renderSocialOlshopCell(lead) {
     }
   }
 
-  // Jika AI mendeteksi sosmed/olshop tambahan
-  if (lead.aiResearch) {
-    const aiSoc = lead.aiResearch.socialMedia;
-    const aiShop = lead.aiResearch.onlineShop;
-    if (aiSoc && aiSoc.instagram && !lead.socialMedia?.includes('instagram.com')) {
-      pills.push(`<span class="pill pill-ig" title="Hasil Riset AI">${escapeHtml(aiSoc.instagram)}</span>`);
-    }
-    if (aiShop && aiShop.shopee && !lead.onlineShop?.includes('shopee.')) {
-      pills.push(`<span class="pill pill-shopee" title="Hasil Riset AI">Shopee: ${escapeHtml(aiShop.shopee)}</span>`);
-    }
-  }
-
   if (pills.length === 0) {
     return `<span class="disabled">-</span>`;
   }
@@ -317,7 +383,6 @@ function renderSocialOlshopCell(lead) {
   return `<div class="pills-wrap">${pills.join('')}</div>`;
 }
 
-// Render cell Riset AI (Sleek, sejajar, tanpa emoji tacky)
 function renderAiCell(lead, leadIndex) {
   if (analyzingIndexes.has(leadIndex)) {
     return `
@@ -350,7 +415,6 @@ function renderAiCell(lead, leadIndex) {
   `;
 }
 
-// Render tabel utama 8 kolom
 function render() {
   const query = searchInput.value.trim().toLowerCase();
   const filterNoSite = onlyNoWebsite.checked;
@@ -387,18 +451,17 @@ function render() {
     const realIndex = allLeads.indexOf(lead);
     const tr = document.createElement('tr');
 
-    // Website Cell
     const websiteCell = lead.hasWebsite
       ? `<a class="site-link" href="${escapeHtml(lead.website)}" target="_blank" rel="noopener">${escapeHtml(lead.website)}</a>`
-      : `<span class="badge no">Belum ada</span>`;
+      : lead.website
+        ? `<a class="site-link" href="${escapeHtml(lead.website)}" target="_blank" rel="noopener" title="Subdomain gratisan (belum punya domain resmi)">Web Gratisan</a>`
+        : `<span class="badge no">Belum ada</span>`;
 
-    // Aksi WA
     const waDigits = normalizePhoneForWa(lead.whatsapp || lead.phone);
     const waButton = waDigits
       ? `<a class="btn-action btn-wa" href="https://wa.me/${waDigits}" target="_blank" rel="noopener">Chat WA</a>`
       : `<span class="btn-action btn-disabled">No WA</span>`;
 
-    // Aksi Maps
     const mapsLink = lead.mapsUrl
       ? `<a class="btn-action btn-maps" href="${escapeHtml(lead.mapsUrl)}" target="_blank" rel="noopener">Maps</a>`
       : `<span class="btn-action btn-disabled">Maps</span>`;
@@ -409,16 +472,14 @@ function render() {
       </button>
     `;
 
-    // Format jumlah ulasan asli
     let reviewCountFormatted = '';
     if (lead.reviewCount) {
       const num = parseInt(lead.reviewCount, 10);
       reviewCountFormatted = isNaN(num) ? lead.reviewCount : num.toLocaleString('id-ID');
     }
 
-    // Rating Display (Contoh: ★ 4.8 (656))
-    const ratingDisplay = lead.rating 
-      ? `<span style="color:#d97706;font-weight:600;">★ ${escapeHtml(lead.rating)}</span>${reviewCountFormatted ? ` <span style="color:#64748b;font-size:11.5px;">(${escapeHtml(reviewCountFormatted)})</span>` : ''}`
+    const ratingDisplay = lead.rating
+      ? `<span style="color:#d97706;font-weight:600;">&#9733; ${escapeHtml(lead.rating)}</span>${reviewCountFormatted ? ` <span style="color:#64748b;font-size:11.5px;">(${escapeHtml(reviewCountFormatted)})</span>` : ''}`
       : `<span style="color:#94a3b8;">-</span>`;
 
     tr.innerHTML = `
@@ -450,7 +511,6 @@ function render() {
   }
 }
 
-// Hapus lead tunggal
 window.deleteLead = async function(index) {
   if (confirm(`Hapus "${allLeads[index]?.name}"?`)) {
     allLeads.splice(index, 1);
@@ -460,38 +520,45 @@ window.deleteLead = async function(index) {
   }
 };
 
-// Panggil API AI untuk riset mendalam web/browser
 async function callAiResearchApi(lead, config) {
-  const systemPrompt = `Kamu adalah AI Web Intelligence & Research Assistant untuk agensi pembuatan website.
-Tugas kamu adalah menganalisis jejak digital bisnis/toko di internet/browser di luar Google Maps:
-- Nama Toko: "${lead.name}"
-- Kategori: "${lead.category || '-'}"
-- Alamat/Kota: "${lead.address || '-'}"
-- Nomor Telepon: "${lead.phone || '-'}"
-- Data Maps saat ini: Website: "${lead.website || 'BELUM ADA'}", Sosmed: "${lead.socialMedia || 'BELUM ADA'}", Olshop: "${lead.onlineShop || 'BELUM ADA'}"
+  const websiteInfo = lead.hasWebsite
+    ? `SUDAH PUNYA DOMAIN MANDIRI (${lead.website})`
+    : lead.website
+      ? `SUBDOMAIN GRATISAN (${lead.website}, belum punya domain resmi)`
+      : 'BELUM ADA WEBSITE RESMI';
 
-Berikan analisis jejak online toko ini dalam format JSON MURNI tanpa markdown/backticks:
+  const systemPrompt = `Kamu adalah Analis Prospek B2B dan Penulis Pesan WhatsApp untuk tim Web Developer.
+Target klien kami HANYA usaha aktif yang BELUM memiliki website berdomain resmi sendiri.
+
+ATURAN FAKTA DAN HUMANIZER (WAJIB):
+1. Analisis murni berdasarkan data Google Maps di bawah. DILARANG mengarang username Instagram, Shopee, atau email palsu yang tidak ada pada data.
+2. DILARANG KERAS memakai tanda double dash (--), em-dash, maupun strip pemisah kalimat ( - ). Gunakan koma atau titik biasa.
+3. DILARANG memakai emoji, bullet list, atau kalimat klise AI seperti "Di era digital saat ini" atau "Meningkatkan visibilitas secara signifikan".
+4. Panjang "pitchDraft" maksimal 45 sampai 60 kata (3 sampai 4 kalimat pendek natural seperti chat WA manusia asli), sebut detail nyata dari Maps mereka, tawarkan contoh tampilan singkat tanpa jualan harga, dan tutup tanpa paksaan.
+
+Data Google Maps Usaha:
+Nama Usaha: "${lead.name}"
+Kategori: "${lead.category || 'Usaha Lokal'}"
+Rating: "${lead.rating || 'Belum ada'}" (${lead.reviewCount || 0} ulasan)
+Alamat: "${lead.address || '-'}"
+Nomor Telepon/WA: "${lead.whatsapp || lead.phone || 'Tidak ada'}"
+Status Website: "${websiteInfo}"
+Sosmed Tercantum: "${lead.socialMedia || 'Belum tercantum'}"
+Marketplace Tercantum: "${lead.onlineShop || 'Belum tercantum'}"
+
+Balas HANYA dalam format json murni tanpa markdown backticks:
 {
   "hasOfficialWebsite": false,
-  "detectedWebsite": null,
-  "socialMedia": {
-    "instagram": "@nama_toko / null",
-    "tiktok": "@nama_toko / null",
-    "facebook": "nama / null"
-  },
-  "onlineShop": {
-    "shopee": "nama_toko / null",
-    "tokopedia": "nama_toko / null"
-  },
-  "additionalContact": {
-    "email": "email_toko / null",
-    "adminWa": "nomor_lain / null"
-  },
-  "digitalPresenceSummary": "Jelaskan status toko di internet (1-2 kalimat). Misal: Toko aktif di Shopee dan Instagram namun belum memiliki website katalog resmi.",
   "leadQualification": "HOT LEAD" | "WARM LEAD" | "COLD LEAD",
-  "pitchAngle": "Sudut penawaran website paling pas (misal: buat landing page katalog agar tidak terkena potongan fee marketplace).",
-  "pitchDraft": "Halo kak [Nama Toko], salam kenal dari tim Web Dev. Kami lihat toko kakak di [Alamat] sudah ramai ulasan dan aktif di [Sosmed/Shopee]. Apakah tertarik dibuatkan website katalog resmi mandiri agar pelanggan lebih mudah order dan hemat komisi marketplace? Boleh kami kirimkan contoh demonya kak?"
+  "leadScore": 85,
+  "opportunityType": "Website Katalog Mandiri",
+  "digitalPresenceSummary": "2 kalimat analisis faktual kondisi digital usaha ini tanpa tanda -- atau em-dash.",
+  "pitchAngle": "1 kalimat sudut penawaran paling masuk akal sesuai kategori usahanya.",
+  "pitchDraft": "Pesan WhatsApp pertama natural manusia, 45 sampai 60 kata, tanpa tanda -- atau em-dash.",
+  "followUpDraft": "Pesan sapaan hari ke-3 singkat dan sopan tanpa tanda -- atau em-dash."
 }`;
+
+  const userPrompt = `Analisis usaha "${lead.name}" di "${lead.address || '-'}" dan balas dalam json.`;
 
   if (config.provider === 'openrouter') {
     const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -506,9 +573,9 @@ Berikan analisis jejak online toko ini dalam format JSON MURNI tanpa markdown/ba
         model: 'openrouter/free',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Lakukan riset web dan kualifikasi untuk toko: ${lead.name} di ${lead.address}` }
+          { role: 'user', content: userPrompt }
         ],
-        temperature: 0.3
+        temperature: 0.35
       })
     });
 
@@ -530,9 +597,10 @@ Berikan analisis jejak online toko ini dalam format JSON MURNI tanpa markdown/ba
         model: config.model || 'deepseek-chat',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Lakukan riset web dan kualifikasi untuk toko: ${lead.name} di ${lead.address}` }
+          { role: 'user', content: userPrompt }
         ],
-        temperature: 0.3
+        response_format: { type: 'json_object' },
+        temperature: 0.35
       })
     });
 
@@ -541,9 +609,8 @@ Berikan analisis jejak online toko ini dalam format JSON MURNI tanpa markdown/ba
       throw new Error(`DeepSeek Error (${res.status}): ${errText}`);
     }
     const data = await res.json();
-    let text = data.choices?.[0]?.message?.content || '{}';
-    text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-    return JSON.parse(text);
+    const text = data.choices?.[0]?.message?.content || '{}';
+    return extractCleanJson(text);
   } else if (config.provider === 'gemini') {
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${config.apiKey}`;
     const res = await fetch(endpoint, {
@@ -552,9 +619,7 @@ Berikan analisis jejak online toko ini dalam format JSON MURNI tanpa markdown/ba
       body: JSON.stringify({
         contents: [
           {
-            parts: [
-              { text: systemPrompt + `\n\nLakukan riset untuk toko: ${lead.name} di ${lead.address}` }
-            ]
+            parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }]
           }
         ]
       })
@@ -565,15 +630,13 @@ Berikan analisis jejak online toko ini dalam format JSON MURNI tanpa markdown/ba
       throw new Error(`Gemini Error (${res.status}): ${errText}`);
     }
     const data = await res.json();
-    let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-    text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-    return JSON.parse(text);
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    return extractCleanJson(text);
   } else {
     throw new Error('Provider tidak didukung');
   }
 }
 
-// Jalankan Riset AI untuk 1 lead
 window.runAiResearchSingle = async function(index) {
   const lead = allLeads[index];
   if (!lead) return;
@@ -592,7 +655,6 @@ window.runAiResearchSingle = async function(index) {
     lead.aiResearch = research;
     allLeads[index] = lead;
 
-    // KUNCI LANGSUNG KE CHROME STORAGE LOKAL
     await chrome.storage.local.set({ leads: allLeads, leads_backup: allLeads });
     updateStorageBadge('Hasil Riset AI Tersimpan Permanen');
   } catch (err) {
@@ -603,7 +665,6 @@ window.runAiResearchSingle = async function(index) {
   }
 };
 
-// Buka Modal Detail Hasil Riset AI
 window.openAiDetail = function(index) {
   const lead = allLeads[index];
   if (!lead || !lead.aiResearch) return;
@@ -611,7 +672,7 @@ window.openAiDetail = function(index) {
   const res = lead.aiResearch;
 
   aiModalBizName.textContent = lead.name;
-  aiModalCategory.textContent = `${lead.category || '-'} • ${lead.address || '-'}`;
+  aiModalCategory.textContent = `${lead.category || '-'} | ${lead.address || '-'}`;
 
   const qual = res.leadQualification || 'WARM LEAD';
   aiModalQualification.textContent = `Kualifikasi: ${qual}`;
@@ -627,27 +688,16 @@ window.openAiDetail = function(index) {
   }
 
   aiModalSummary.textContent = res.digitalPresenceSummary || 'Tidak ada ringkasan.';
-
-  const socParts = [];
-  if (res.socialMedia?.instagram) socParts.push(`IG: ${res.socialMedia.instagram}`);
-  if (res.socialMedia?.tiktok) socParts.push(`TikTok: ${res.socialMedia.tiktok}`);
-  if (res.socialMedia?.facebook) socParts.push(`FB: ${res.socialMedia.facebook}`);
-  aiModalSocials.textContent = socParts.length > 0 ? socParts.join(' | ') : (lead.socialMedia || '-');
-
-  const shopParts = [];
-  if (res.onlineShop?.shopee) shopParts.push(`Shopee: ${res.onlineShop.shopee}`);
-  if (res.onlineShop?.tokopedia) shopParts.push(`Tokopedia: ${res.onlineShop.tokopedia}`);
-  aiModalOlshop.textContent = shopParts.length > 0 ? shopParts.join(' | ') : (lead.onlineShop || '-');
-
-  const contParts = [];
-  if (res.additionalContact?.email) contParts.push(`Email: ${res.additionalContact.email}`);
-  if (res.additionalContact?.adminWa) contParts.push(`WA Admin: ${res.additionalContact.adminWa}`);
-  aiModalContacts.textContent = contParts.length > 0 ? contParts.join(' | ') : '-';
+  aiModalSocials.textContent = lead.socialMedia || 'Belum tercantum di Maps';
+  aiModalOlshop.textContent = lead.onlineShop || 'Belum tercantum di Maps';
+  aiModalContacts.textContent = lead.whatsapp || lead.phone || 'Tidak ada';
 
   aiModalPitchAngle.textContent = res.pitchAngle || '-';
-  aiModalPitchText.value = res.pitchDraft || `Halo kak ${lead.name}, kami lihat toko kakak sangat potensial...`;
+  aiModalPitchText.value =
+    res.pitchDraft ||
+    `Halo Kak ${lead.name}, kami lihat profil usaha Kakak di Google Maps cukup ramai namun belum mencantumkan website katalog resmi. Boleh kami kirimkan contoh tampilannya Kak?`;
 
-  const waDigits = normalizePhoneForWa(res.additionalContact?.adminWa || lead.whatsapp || lead.phone);
+  const waDigits = normalizePhoneForWa(lead.whatsapp || lead.phone);
   if (waDigits) {
     const textEncoded = encodeURIComponent(aiModalPitchText.value);
     aiModalWaLink.href = `https://wa.me/${waDigits}?text=${textEncoded}`;
@@ -659,7 +709,6 @@ window.openAiDetail = function(index) {
   aiDetailModal.hidden = false;
 };
 
-// Modal Detail Events
 aiModalCloseBtn.addEventListener('click', () => {
   aiDetailModal.hidden = true;
 });
@@ -673,20 +722,19 @@ aiModalCopyBtn.addEventListener('click', () => {
   }, 2000);
 });
 
-// Bulk AI Research
 bulkAiBtn.addEventListener('click', async () => {
   if (isBulkRunning) {
     alert('Riset AI sedang berjalan!');
     return;
   }
 
-  const unresearched = allLeads.filter((l) => !l.aiResearch);
+  const unresearched = allLeads.filter((l) => !l.aiResearch && !l.hasWebsite && !l.isClosed);
   if (unresearched.length === 0) {
-    alert('Semua toko yang ada sudah selesai di-riset oleh AI!');
+    alert('Semua toko potensial tanpa website resmi sudah selesai di-riset oleh AI!');
     return;
   }
 
-  if (!confirm(`Mulai riset AI otomatis untuk ${unresearched.length} toko yang belum di-riset?`)) {
+  if (!confirm(`Mulai riset AI otomatis untuk ${unresearched.length} toko tanpa website resmi?`)) {
     return;
   }
 
@@ -698,7 +746,7 @@ bulkAiBtn.addEventListener('click', async () => {
   let doneCount = 0;
   for (let i = 0; i < allLeads.length; i++) {
     const lead = allLeads[i];
-    if (lead.aiResearch) continue;
+    if (lead.aiResearch || lead.hasWebsite || lead.isClosed) continue;
 
     aiProgressStatus.textContent = `Meriset [${doneCount + 1}/${unresearched.length}]: ${lead.name}... (Data tersimpan otomatis setiap toko)`;
     analyzingIndexes.add(i);
@@ -710,7 +758,6 @@ bulkAiBtn.addEventListener('click', async () => {
       allLeads[i] = lead;
       doneCount += 1;
 
-      // SIMPAN KE STORAGE SETIAP SELESAI 1 TOKO (ANTI HILANG)
       await chrome.storage.local.set({ leads: allLeads, leads_backup: allLeads });
       updateStorageBadge(`Tersimpan Otomatis (${doneCount}/${unresearched.length})`);
     } catch (err) {
@@ -720,7 +767,6 @@ bulkAiBtn.addEventListener('click', async () => {
       render();
     }
 
-    // Delay santai agar tidak terkena rate-limit API
     await new Promise((r) => setTimeout(r, 600));
   }
 
@@ -733,7 +779,6 @@ bulkAiBtn.addEventListener('click', async () => {
   }, 5000);
 });
 
-// AI & Dashboard Settings Modal
 aiSettingsBtn.addEventListener('click', () => {
   const activeProv = currentAiConfig.provider || 'deepseek';
   draftProviderKeys = {
@@ -814,10 +859,9 @@ aiTestBtn.addEventListener('click', async () => {
   }
 });
 
-// Muat data dari storage saat tab dibuka
 async function load() {
   const { leads = [], aiConfig, tableFilters } = await chrome.storage.local.get(['leads', 'aiConfig', 'tableFilters']);
-  
+
   if (aiConfig) {
     const mergedKeys = {
       deepseek: '',
@@ -844,28 +888,24 @@ async function load() {
     dashboardLinkBtn.href = currentAiConfig.dashboardUrl;
   }
 
-  // Ingat preferensi filter pengguna
   if (tableFilters && typeof tableFilters.onlyNoWebsite === 'boolean') {
     onlyNoWebsite.checked = tableFilters.onlyNoWebsite;
   } else {
-    onlyNoWebsite.checked = false; // Tampilkan semua data secara default!
+    onlyNoWebsite.checked = false;
   }
 
   allLeads = (leads || []).map(cleanLead);
-  // Simpan kembali data yang sudah dinormalisasi dan backup
   await chrome.storage.local.set({ leads: allLeads, leads_backup: allLeads });
   updateStorageBadge('Data Tersimpan di Storage');
   render();
 }
 
-// Event Listeners
 searchInput.addEventListener('input', render);
 onlyNoWebsite.addEventListener('change', async () => {
   await chrome.storage.local.set({ tableFilters: { onlyNoWebsite: onlyNoWebsite.checked } });
   render();
 });
 
-// Tambah manual
 addManualBtn.addEventListener('click', () => {
   manualForm.hidden = !manualForm.hidden;
   if (!manualForm.hidden) mName.focus();
@@ -910,7 +950,6 @@ mSaveBtn.addEventListener('click', async () => {
   manualForm.hidden = true;
 });
 
-// Hapus semua data
 clearBtn.addEventListener('click', async () => {
   if (confirm('Yakin ingin menghapus semua data yang tersimpan di ekstensi?')) {
     allLeads = [];
@@ -920,7 +959,6 @@ clearBtn.addEventListener('click', async () => {
   }
 });
 
-// Export CSV
 exportCsvBtn.addEventListener('click', () => {
   if (currentFilteredLeads.length === 0) {
     alert('Tidak ada data untuk diekspor');
@@ -955,7 +993,6 @@ exportCsvBtn.addEventListener('click', () => {
   URL.revokeObjectURL(url);
 });
 
-// Export JSON
 exportJsonBtn.addEventListener('click', () => {
   if (currentFilteredLeads.length === 0) {
     alert('Tidak ada data untuk diekspor');
@@ -971,7 +1008,6 @@ exportJsonBtn.addEventListener('click', () => {
   URL.revokeObjectURL(url);
 });
 
-// Sinkron ke Web Dashboard
 syncDashboardBtn.addEventListener('click', async () => {
   if (allLeads.length === 0) {
     alert('Tidak ada data yang bisa disinkronkan.');
@@ -1012,7 +1048,6 @@ syncDashboardBtn.addEventListener('click', async () => {
   }, 6000);
 });
 
-// Update otomatis jika ada data scraping masuk saat tabel terbuka
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.leads) {
     allLeads = (changes.leads.newValue || []).map(cleanLead);

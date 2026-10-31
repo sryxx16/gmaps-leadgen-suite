@@ -8,14 +8,19 @@
 <body>
   <header>
     <h1>GMaps Lead Finder</h1>
-    <p class="subtitle">Cari bisnis tanpa website dari hasil pencarian Maps</p>
+    <p class="subtitle">Cari bisnis tanpa website resmi dari Google Maps</p>
   </header>
 
   <main>
     <div class="field">
-      <label for="target">Jumlah data BARU yang mau diambil sesi ini</label>
+      <label for="target">Jumlah prospek BARU yang mau diambil sesi ini</label>
       <input type="number" id="target" min="1" max="1000" value="20" />
     </div>
+
+    <label style="display:flex;align-items:flex-start;gap:8px;margin:10px 0 12px;font-size:12px;line-height:1.4;color:#334155;cursor:pointer;">
+      <input type="checkbox" id="skipOwnedWeb" checked style="margin-top:2px;" />
+      <span>Lewati otomatis bisnis yang sudah punya website resmi atau tutup</span>
+    </label>
 
     <div class="actions">
       <button id="startBtn" class="primary">Mulai</button>
@@ -23,7 +28,7 @@
     </div>
 
     <div id="status" class="status">
-      Buka Google Maps, cari kategori bisnis (mis. "Toko Sepatu Bogor"), lalu tekan Mulai.
+      Buka Google Maps, cari kategori bisnis (misal "Toko Sepatu Bogor"), lalu tekan Mulai.
     </div>
 
     <div class="progress-wrap" id="progressWrap" hidden>
@@ -31,7 +36,7 @@
       <div class="progress-label" id="progressLabel">0 / 0</div>
     </div>
 
-    <button id="openTableBtn" class="link-btn">Buka tabel hasil →</button>
+    <button id="openTableBtn" class="link-btn">Buka tabel hasil</button>
   </main>
 
   <script src="popup.js"></script>
