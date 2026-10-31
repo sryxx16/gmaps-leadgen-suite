@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GMaps Lead Finder",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Cari bisnis di Google Maps yang belum punya website, buat lead generation jasa pembuatan website.",
   "permissions": ["storage", "activeTab", "scripting"],
   "host_permissions": [
@@ -10,6 +10,7 @@
     "http://127.0.0.1:3000/*",
     "https://*.vercel.app/*",
     "*://*/*",
+    "https://openrouter.ai/*",
     "https://api.deepseek.com/*",
     "https://generativelanguage.googleapis.com/*"
   ],

@@ -26,7 +26,7 @@
       <button id="exportCsvBtn" class="secondary">Export CSV</button>
       <button id="exportJsonBtn" class="secondary">Export JSON</button>
       <button id="syncDashboardBtn" class="secondary">Sinkron ke Dashboard</button>
-      <a href="http://localhost:3000" id="dashboardLinkBtn" target="_blank" rel="noopener noreferrer" class="btn-dashboard-link">Buka Web Dashboard ↗</a>
+      <a href="http://localhost:3000" id="dashboardLinkBtn" target="_blank" rel="noopener noreferrer" class="btn-dashboard-link">Buka Web Dashboard</a>
       <button id="addManualBtn" class="secondary">+ Tambah Manual</button>
       <button id="aiSettingsBtn" class="secondary">Pengaturan AI</button>
       <button id="clearBtn" class="danger">Hapus Semua</button>
@@ -130,12 +130,13 @@
       <div class="modal-body" style="padding-top:10px;">
         <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:4px;">Provider AI:</label>
         <select id="aiProviderSelect" style="width:100%;padding:8px;border-radius:6px;border:1px solid #cbd5e1;margin-bottom:12px;">
-          <option value="deepseek">DeepSeek (deepseek-chat)</option>
+          <option value="deepseek">DeepSeek (deepseek-chat — Utama)</option>
+          <option value="openrouter">OpenRouter Free (openrouter/free)</option>
           <option value="gemini">Google Gemini (gemini-1.5-flash)</option>
         </select>
 
         <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:4px;">API Key:</label>
-        <input type="password" id="aiApiKeyInput" placeholder="sk-..." style="width:100%;padding:8px;border-radius:6px;border:1px solid #cbd5e1;margin-bottom:12px;font-family:monospace;" />
+        <input type="password" id="aiApiKeyInput" placeholder="sk-or-v1-... / API Key" style="width:100%;padding:8px;border-radius:6px;border:1px solid #cbd5e1;margin-bottom:12px;font-family:monospace;" />
 
         <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:4px;">URL Web Dashboard (Local / Vercel):</label>
         <input type="url" id="dashboardUrlInput" placeholder="http://localhost:3000 atau https://xxx.vercel.app" style="width:100%;padding:8px;border-radius:6px;border:1px solid #cbd5e1;margin-bottom:12px;font-size:12px;" />

@@ -1,20 +1,33 @@
 import { NextResponse } from 'next/server';
 
+const PROTECTED_API_PATHS = [
+  '/api/delete',
+  '/api/delete-all',
+  '/api/leads/ai',
+  '/api/ai/deepseek',
+];
+
 export function middleware(request) {
   const path = request.nextUrl.pathname;
+  const isAuthenticated = request.cookies.has('auth');
 
-  // Lindungi halaman dashboard dan import dengan autentikasi
-  const isProtectedPath = path === '/' || path.startsWith('/import');
-
-  if (isProtectedPath) {
-    const isAuthenticated = request.cookies.has('auth');
-
-    if (!isAuthenticated) {
-      return NextResponse.redirect(new URL('/login', request.url));
-    }
+  const isProtectedApi = PROTECTED_API_PATHS.some(
+    (prefix) => path === prefix || path.startsWith(`${prefix}/`)
+  );
+  if (isProtectedApi && !isAuthenticated) {
+    return NextResponse.json(
+      { success: false, error: 'Sesi berakhir. Silakan login kembali.' },
+      { status: 401 }
+    );
   }
 
-  if (path === '/login' && request.cookies.has('auth')) {
+  // Lindungi halaman dashboard dan import dengan autentikasi
+  const isProtectedPage = path === '/' || path.startsWith('/import');
+  if (isProtectedPage && !isAuthenticated) {
+    return NextResponse.redirect(new URL('/login', request.url));
+  }
+
+  if (path === '/login' && isAuthenticated) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
@@ -22,5 +35,5 @@ export function middleware(request) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|zip)$).*)'],
 };

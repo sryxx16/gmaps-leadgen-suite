@@ -62,14 +62,41 @@ let currentFilteredLeads = [];
 let analyzingIndexes = new Set();
 let isBulkRunning = false;
 
-// Default konfigurasi AI & Dashboard
+// Default konfigurasi AI & Dashboard (slot API key terpisah per provider)
 const DEFAULT_AI_CONFIG = {
   provider: 'deepseek',
   apiKey: '',
+  apiKeys: {
+    deepseek: '',
+    openrouter: '',
+    gemini: ''
+  },
   model: 'deepseek-chat',
   dashboardUrl: 'http://localhost:3000'
 };
-let currentAiConfig = { ...DEFAULT_AI_CONFIG };
+let currentAiConfig = { ...DEFAULT_AI_CONFIG, apiKeys: { ...DEFAULT_AI_CONFIG.apiKeys } };
+let draftProviderKeys = { ...DEFAULT_AI_CONFIG.apiKeys };
+let lastSelectedModalProvider = 'deepseek';
+
+function resolveDefaultModel(provider) {
+  if (provider === 'openrouter') return 'openrouter/free';
+  if (provider === 'deepseek') return 'deepseek-chat';
+  return 'gemini-1.5-flash';
+}
+
+function extractCleanJson(rawText) {
+  const cleaned = String(rawText || '')
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/```json/gi, '')
+    .replace(/```/g, '')
+    .trim();
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start !== -1 && end > start) {
+    return JSON.parse(cleaned.slice(start, end + 1));
+  }
+  return JSON.parse(cleaned || '{}');
+}
 
 // Normalisasi nomor telepon lokal Indonesia ke format wa.me (628...)
 function normalizePhoneForWa(phone) {
@@ -88,7 +115,7 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
-function updateStorageBadge(text = '💾 Tersimpan Aman di Storage') {
+function updateStorageBadge(text = 'Tersimpan di Storage') {
   if (storageBadge) {
     storageBadge.textContent = text;
     storageBadge.style.background = '#dcfce7';
@@ -428,7 +455,7 @@ window.deleteLead = async function(index) {
   if (confirm(`Hapus "${allLeads[index]?.name}"?`)) {
     allLeads.splice(index, 1);
     await chrome.storage.local.set({ leads: allLeads, leads_backup: allLeads });
-    updateStorageBadge('💾 Data Terhapus & Tersimpan');
+    updateStorageBadge('Data Terhapus & Tersimpan');
     render();
   }
 };
@@ -466,7 +493,33 @@ Berikan analisis jejak online toko ini dalam format JSON MURNI tanpa markdown/ba
   "pitchDraft": "Halo kak [Nama Toko], salam kenal dari tim Web Dev. Kami lihat toko kakak di [Alamat] sudah ramai ulasan dan aktif di [Sosmed/Shopee]. Apakah tertarik dibuatkan website katalog resmi mandiri agar pelanggan lebih mudah order dan hemat komisi marketplace? Boleh kami kirimkan contoh demonya kak?"
 }`;
 
-  if (config.provider === 'deepseek') {
+  if (config.provider === 'openrouter') {
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.apiKey}`,
+        'HTTP-Referer': config.dashboardUrl || 'http://localhost:3000',
+        'X-Title': 'GMaps Lead Finder Extension'
+      },
+      body: JSON.stringify({
+        model: 'openrouter/free',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Lakukan riset web dan kualifikasi untuk toko: ${lead.name} di ${lead.address}` }
+        ],
+        temperature: 0.3
+      })
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`OpenRouter Error (${res.status}): ${errText}`);
+    }
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content || '{}';
+    return extractCleanJson(text);
+  } else if (config.provider === 'deepseek') {
     const res = await fetch('https://api.deepseek.com/chat/completions', {
       method: 'POST',
       headers: {
@@ -526,7 +579,7 @@ window.runAiResearchSingle = async function(index) {
   if (!lead) return;
 
   if (!currentAiConfig.apiKey) {
-    alert('API Key AI belum diisi! Silakan buka tombol ⚙️ Pengaturan AI di atas.');
+    alert('API Key AI belum diisi! Silakan buka tombol Pengaturan AI di atas.');
     aiSettingsModal.hidden = false;
     return;
   }
@@ -541,7 +594,7 @@ window.runAiResearchSingle = async function(index) {
 
     // KUNCI LANGSUNG KE CHROME STORAGE LOKAL
     await chrome.storage.local.set({ leads: allLeads, leads_backup: allLeads });
-    updateStorageBadge('💾 Hasil Riset AI Tersimpan Permanen');
+    updateStorageBadge('Hasil Riset AI Tersimpan Permanen');
   } catch (err) {
     alert(`Gagal riset AI untuk "${lead.name}":\n${err.message}`);
   } finally {
@@ -614,9 +667,9 @@ aiModalCloseBtn.addEventListener('click', () => {
 aiModalCopyBtn.addEventListener('click', () => {
   aiModalPitchText.select();
   document.execCommand('copy');
-  aiModalCopyBtn.textContent = '✅ Berhasil Disalin!';
+  aiModalCopyBtn.textContent = 'Berhasil Disalin';
   setTimeout(() => {
-    aiModalCopyBtn.textContent = '📋 Salin Pesan';
+    aiModalCopyBtn.textContent = 'Salin Pesan';
   }, 2000);
 });
 
@@ -647,7 +700,7 @@ bulkAiBtn.addEventListener('click', async () => {
     const lead = allLeads[i];
     if (lead.aiResearch) continue;
 
-    aiProgressStatus.textContent = `⏳ Meriset [${doneCount + 1}/${unresearched.length}]: ${lead.name}... (Data tersimpan otomatis setiap toko)`;
+    aiProgressStatus.textContent = `Meriset [${doneCount + 1}/${unresearched.length}]: ${lead.name}... (Data tersimpan otomatis setiap toko)`;
     analyzingIndexes.add(i);
     render();
 
@@ -659,7 +712,7 @@ bulkAiBtn.addEventListener('click', async () => {
 
       // SIMPAN KE STORAGE SETIAP SELESAI 1 TOKO (ANTI HILANG)
       await chrome.storage.local.set({ leads: allLeads, leads_backup: allLeads });
-      updateStorageBadge(`💾 Tersimpan Otomatis (${doneCount}/${unresearched.length})`);
+      updateStorageBadge(`Tersimpan Otomatis (${doneCount}/${unresearched.length})`);
     } catch (err) {
       console.error(`Error riset ${lead.name}:`, err);
     } finally {
@@ -674,7 +727,7 @@ bulkAiBtn.addEventListener('click', async () => {
   isBulkRunning = false;
   aiProgressStatus.style.background = '#dcfce7';
   aiProgressStatus.style.color = '#15803d';
-  aiProgressStatus.textContent = `✅ Selesai! Berhasil meriset ${doneCount} toko dan tersimpan aman di storage.`;
+  aiProgressStatus.textContent = `Selesai. Berhasil meriset ${doneCount} toko dan tersimpan di storage.`;
   setTimeout(() => {
     aiProgressStatus.style.display = 'none';
   }, 5000);
@@ -682,11 +735,30 @@ bulkAiBtn.addEventListener('click', async () => {
 
 // AI & Dashboard Settings Modal
 aiSettingsBtn.addEventListener('click', () => {
-  aiProviderSelect.value = currentAiConfig.provider || 'deepseek';
-  aiApiKeyInput.value = currentAiConfig.apiKey || '';
+  const activeProv = currentAiConfig.provider || 'deepseek';
+  draftProviderKeys = {
+    deepseek: '',
+    openrouter: '',
+    gemini: '',
+    ...(currentAiConfig.apiKeys || {})
+  };
+  if (currentAiConfig.apiKey && !draftProviderKeys[activeProv]) {
+    draftProviderKeys[activeProv] = currentAiConfig.apiKey;
+  }
+  lastSelectedModalProvider = activeProv;
+  aiProviderSelect.value = activeProv;
+  aiApiKeyInput.value = draftProviderKeys[activeProv] || '';
   if (dashboardUrlInput) dashboardUrlInput.value = currentAiConfig.dashboardUrl || 'http://localhost:3000';
   aiTestStatus.style.display = 'none';
   aiSettingsModal.hidden = false;
+});
+
+aiProviderSelect.addEventListener('change', () => {
+  draftProviderKeys[lastSelectedModalProvider] = aiApiKeyInput.value.trim();
+  const nextProv = aiProviderSelect.value;
+  lastSelectedModalProvider = nextProv;
+  aiApiKeyInput.value = draftProviderKeys[nextProv] || '';
+  aiTestStatus.style.display = 'none';
 });
 
 aiSettingsCloseBtn.addEventListener('click', () => {
@@ -694,9 +766,13 @@ aiSettingsCloseBtn.addEventListener('click', () => {
 });
 
 aiSaveSettingsBtn.addEventListener('click', async () => {
-  currentAiConfig.provider = aiProviderSelect.value;
-  currentAiConfig.apiKey = aiApiKeyInput.value.trim();
-  currentAiConfig.model = currentAiConfig.provider === 'deepseek' ? 'deepseek-chat' : 'gemini-1.5-flash';
+  const selectedProv = aiProviderSelect.value;
+  draftProviderKeys[selectedProv] = aiApiKeyInput.value.trim();
+
+  currentAiConfig.provider = selectedProv;
+  currentAiConfig.apiKeys = { ...draftProviderKeys };
+  currentAiConfig.apiKey = draftProviderKeys[selectedProv] || '';
+  currentAiConfig.model = resolveDefaultModel(selectedProv);
   if (dashboardUrlInput) {
     currentAiConfig.dashboardUrl = (dashboardUrlInput.value.trim() || 'http://localhost:3000').replace(/\/+$/, '');
     if (dashboardLinkBtn) dashboardLinkBtn.href = currentAiConfig.dashboardUrl;
@@ -710,6 +786,7 @@ aiSaveSettingsBtn.addEventListener('click', async () => {
 aiTestBtn.addEventListener('click', async () => {
   const provider = aiProviderSelect.value;
   const apiKey = aiApiKeyInput.value.trim();
+  draftProviderKeys[provider] = apiKey;
 
   if (!apiKey) {
     aiTestStatus.style.display = 'block';
@@ -720,20 +797,20 @@ aiTestBtn.addEventListener('click', async () => {
 
   aiTestStatus.style.display = 'block';
   aiTestStatus.style.color = '#4338ca';
-  aiTestStatus.textContent = '⏳ Menguji koneksi ke server AI...';
+  aiTestStatus.textContent = 'Menguji koneksi ke server AI...';
 
   try {
     const dummy = { name: 'Toko Sepatu Berkah', category: 'Toko Sepatu', address: 'Bogor', phone: '08123456789' };
-    const res = await callAiResearchApi(dummy, { provider, apiKey, model: provider === 'deepseek' ? 'deepseek-chat' : 'gemini-1.5-flash' });
+    const res = await callAiResearchApi(dummy, { provider, apiKey, model: resolveDefaultModel(provider) });
     if (res && res.leadQualification) {
       aiTestStatus.style.color = '#15803d';
-      aiTestStatus.textContent = `✅ Berhasil terhubung! Kualifikasi uji coba: ${res.leadQualification}`;
+      aiTestStatus.textContent = `Berhasil terhubung! Kualifikasi uji coba: ${res.leadQualification}`;
     } else {
       throw new Error('Format respon tidak sesuai');
     }
   } catch (err) {
     aiTestStatus.style.color = '#dc2626';
-    aiTestStatus.textContent = `❌ Gagal: ${err.message}`;
+    aiTestStatus.textContent = `Gagal: ${err.message}`;
   }
 });
 
@@ -742,7 +819,23 @@ async function load() {
   const { leads = [], aiConfig, tableFilters } = await chrome.storage.local.get(['leads', 'aiConfig', 'tableFilters']);
   
   if (aiConfig) {
-    currentAiConfig = { ...DEFAULT_AI_CONFIG, ...aiConfig };
+    const mergedKeys = {
+      deepseek: '',
+      openrouter: '',
+      gemini: '',
+      ...(aiConfig.apiKeys || {})
+    };
+    const prov = aiConfig.provider || 'deepseek';
+    if (aiConfig.apiKey && !mergedKeys[prov]) {
+      mergedKeys[prov] = aiConfig.apiKey;
+    }
+    currentAiConfig = {
+      ...DEFAULT_AI_CONFIG,
+      ...aiConfig,
+      provider: prov,
+      apiKeys: mergedKeys,
+      apiKey: mergedKeys[prov] || ''
+    };
   } else {
     await chrome.storage.local.set({ aiConfig: DEFAULT_AI_CONFIG });
   }
@@ -761,7 +854,7 @@ async function load() {
   allLeads = (leads || []).map(cleanLead);
   // Simpan kembali data yang sudah dinormalisasi dan backup
   await chrome.storage.local.set({ leads: allLeads, leads_backup: allLeads });
-  updateStorageBadge('💾 Data Tersimpan Aman');
+  updateStorageBadge('Data Tersimpan di Storage');
   render();
 }
 
@@ -803,7 +896,7 @@ mSaveBtn.addEventListener('click', async () => {
 
   allLeads.unshift(lead);
   await chrome.storage.local.set({ leads: allLeads, leads_backup: allLeads });
-  updateStorageBadge('💾 Toko Manual Tersimpan');
+  updateStorageBadge('Toko Manual Tersimpan');
   render();
 
   mName.value = '';
@@ -822,7 +915,7 @@ clearBtn.addEventListener('click', async () => {
   if (confirm('Yakin ingin menghapus semua data yang tersimpan di ekstensi?')) {
     allLeads = [];
     await chrome.storage.local.set({ leads: [] });
-    updateStorageBadge('🗑️ Semua Data Dikosongkan');
+    updateStorageBadge('Semua Data Dikosongkan');
     render();
   }
 });
@@ -888,7 +981,7 @@ syncDashboardBtn.addEventListener('click', async () => {
   syncStatus.style.display = 'block';
   syncStatus.style.background = '#e0f2fe';
   syncStatus.style.color = '#0369a1';
-  syncStatus.textContent = '⏳ Sedang mengirim data ke Web Dashboard...';
+  syncStatus.textContent = 'Sedang mengirim data ke Web Dashboard...';
 
   const targetBase = (currentAiConfig.dashboardUrl || 'http://localhost:3000').replace(/\/+$/, '');
   const targetUrl = `${targetBase}/api/import`;
@@ -904,14 +997,14 @@ syncDashboardBtn.addEventListener('click', async () => {
       const data = await res.json();
       syncStatus.style.background = '#dcfce7';
       syncStatus.style.color = '#15803d';
-      syncStatus.textContent = `✅ Berhasil sinkron ${data.inserted || allLeads.length} data ke Web Dashboard!`;
+      syncStatus.textContent = `Berhasil sinkron ${data.inserted || allLeads.length} data ke Web Dashboard.`;
     } else {
       throw new Error(`HTTP ${res.status}`);
     }
   } catch (err) {
     syncStatus.style.background = '#fee2e2';
     syncStatus.style.color = '#b91c1c';
-    syncStatus.textContent = `⚠️ Gagal sinkron ke ${targetBase} (${err.message}). Pastikan server dashboard menyala.`;
+    syncStatus.textContent = `Gagal sinkron ke ${targetBase} (${err.message}). Pastikan server dashboard menyala.`;
   }
 
   setTimeout(() => {
@@ -923,7 +1016,7 @@ syncDashboardBtn.addEventListener('click', async () => {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.leads) {
     allLeads = (changes.leads.newValue || []).map(cleanLead);
-    updateStorageBadge('💾 Data Baru Masuk & Tersimpan');
+    updateStorageBadge('Data Baru Masuk & Tersimpan');
     render();
   }
 });
