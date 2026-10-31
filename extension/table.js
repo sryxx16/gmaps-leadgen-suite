@@ -115,7 +115,7 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
-function updateStorageBadge(text = '💾 Tersimpan Aman di Storage') {
+function updateStorageBadge(text = 'Tersimpan di Storage') {
   if (storageBadge) {
     storageBadge.textContent = text;
     storageBadge.style.background = '#dcfce7';
@@ -455,7 +455,7 @@ window.deleteLead = async function(index) {
   if (confirm(`Hapus "${allLeads[index]?.name}"?`)) {
     allLeads.splice(index, 1);
     await chrome.storage.local.set({ leads: allLeads, leads_backup: allLeads });
-    updateStorageBadge('💾 Data Terhapus & Tersimpan');
+    updateStorageBadge('Data Terhapus & Tersimpan');
     render();
   }
 };
@@ -579,7 +579,7 @@ window.runAiResearchSingle = async function(index) {
   if (!lead) return;
 
   if (!currentAiConfig.apiKey) {
-    alert('API Key AI belum diisi! Silakan buka tombol ⚙️ Pengaturan AI di atas.');
+    alert('API Key AI belum diisi! Silakan buka tombol Pengaturan AI di atas.');
     aiSettingsModal.hidden = false;
     return;
   }
@@ -594,7 +594,7 @@ window.runAiResearchSingle = async function(index) {
 
     // KUNCI LANGSUNG KE CHROME STORAGE LOKAL
     await chrome.storage.local.set({ leads: allLeads, leads_backup: allLeads });
-    updateStorageBadge('💾 Hasil Riset AI Tersimpan Permanen');
+    updateStorageBadge('Hasil Riset AI Tersimpan Permanen');
   } catch (err) {
     alert(`Gagal riset AI untuk "${lead.name}":\n${err.message}`);
   } finally {
@@ -667,9 +667,9 @@ aiModalCloseBtn.addEventListener('click', () => {
 aiModalCopyBtn.addEventListener('click', () => {
   aiModalPitchText.select();
   document.execCommand('copy');
-  aiModalCopyBtn.textContent = '✅ Berhasil Disalin!';
+  aiModalCopyBtn.textContent = 'Berhasil Disalin';
   setTimeout(() => {
-    aiModalCopyBtn.textContent = '📋 Salin Pesan';
+    aiModalCopyBtn.textContent = 'Salin Pesan';
   }, 2000);
 });
 
@@ -700,7 +700,7 @@ bulkAiBtn.addEventListener('click', async () => {
     const lead = allLeads[i];
     if (lead.aiResearch) continue;
 
-    aiProgressStatus.textContent = `⏳ Meriset [${doneCount + 1}/${unresearched.length}]: ${lead.name}... (Data tersimpan otomatis setiap toko)`;
+    aiProgressStatus.textContent = `Meriset [${doneCount + 1}/${unresearched.length}]: ${lead.name}... (Data tersimpan otomatis setiap toko)`;
     analyzingIndexes.add(i);
     render();
 
@@ -712,7 +712,7 @@ bulkAiBtn.addEventListener('click', async () => {
 
       // SIMPAN KE STORAGE SETIAP SELESAI 1 TOKO (ANTI HILANG)
       await chrome.storage.local.set({ leads: allLeads, leads_backup: allLeads });
-      updateStorageBadge(`💾 Tersimpan Otomatis (${doneCount}/${unresearched.length})`);
+      updateStorageBadge(`Tersimpan Otomatis (${doneCount}/${unresearched.length})`);
     } catch (err) {
       console.error(`Error riset ${lead.name}:`, err);
     } finally {
@@ -727,7 +727,7 @@ bulkAiBtn.addEventListener('click', async () => {
   isBulkRunning = false;
   aiProgressStatus.style.background = '#dcfce7';
   aiProgressStatus.style.color = '#15803d';
-  aiProgressStatus.textContent = `✅ Selesai! Berhasil meriset ${doneCount} toko dan tersimpan aman di storage.`;
+  aiProgressStatus.textContent = `Selesai. Berhasil meriset ${doneCount} toko dan tersimpan di storage.`;
   setTimeout(() => {
     aiProgressStatus.style.display = 'none';
   }, 5000);
@@ -854,7 +854,7 @@ async function load() {
   allLeads = (leads || []).map(cleanLead);
   // Simpan kembali data yang sudah dinormalisasi dan backup
   await chrome.storage.local.set({ leads: allLeads, leads_backup: allLeads });
-  updateStorageBadge('💾 Data Tersimpan Aman');
+  updateStorageBadge('Data Tersimpan di Storage');
   render();
 }
 
@@ -896,7 +896,7 @@ mSaveBtn.addEventListener('click', async () => {
 
   allLeads.unshift(lead);
   await chrome.storage.local.set({ leads: allLeads, leads_backup: allLeads });
-  updateStorageBadge('💾 Toko Manual Tersimpan');
+  updateStorageBadge('Toko Manual Tersimpan');
   render();
 
   mName.value = '';
@@ -915,7 +915,7 @@ clearBtn.addEventListener('click', async () => {
   if (confirm('Yakin ingin menghapus semua data yang tersimpan di ekstensi?')) {
     allLeads = [];
     await chrome.storage.local.set({ leads: [] });
-    updateStorageBadge('🗑️ Semua Data Dikosongkan');
+    updateStorageBadge('Semua Data Dikosongkan');
     render();
   }
 });
@@ -981,7 +981,7 @@ syncDashboardBtn.addEventListener('click', async () => {
   syncStatus.style.display = 'block';
   syncStatus.style.background = '#e0f2fe';
   syncStatus.style.color = '#0369a1';
-  syncStatus.textContent = '⏳ Sedang mengirim data ke Web Dashboard...';
+  syncStatus.textContent = 'Sedang mengirim data ke Web Dashboard...';
 
   const targetBase = (currentAiConfig.dashboardUrl || 'http://localhost:3000').replace(/\/+$/, '');
   const targetUrl = `${targetBase}/api/import`;
@@ -997,14 +997,14 @@ syncDashboardBtn.addEventListener('click', async () => {
       const data = await res.json();
       syncStatus.style.background = '#dcfce7';
       syncStatus.style.color = '#15803d';
-      syncStatus.textContent = `✅ Berhasil sinkron ${data.inserted || allLeads.length} data ke Web Dashboard!`;
+      syncStatus.textContent = `Berhasil sinkron ${data.inserted || allLeads.length} data ke Web Dashboard.`;
     } else {
       throw new Error(`HTTP ${res.status}`);
     }
   } catch (err) {
     syncStatus.style.background = '#fee2e2';
     syncStatus.style.color = '#b91c1c';
-    syncStatus.textContent = `⚠️ Gagal sinkron ke ${targetBase} (${err.message}). Pastikan server dashboard menyala.`;
+    syncStatus.textContent = `Gagal sinkron ke ${targetBase} (${err.message}). Pastikan server dashboard menyala.`;
   }
 
   setTimeout(() => {
@@ -1016,7 +1016,7 @@ syncDashboardBtn.addEventListener('click', async () => {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.leads) {
     allLeads = (changes.leads.newValue || []).map(cleanLead);
-    updateStorageBadge('💾 Data Baru Masuk & Tersimpan');
+    updateStorageBadge('Data Baru Masuk & Tersimpan');
     render();
   }
 });

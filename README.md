@@ -1,4 +1,4 @@
-# 🗺️ GMaps LeadGen Suite
+# GMaps LeadGen Suite
 
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
@@ -12,7 +12,7 @@ Repositori ini terdiri dari dua bagian utama:
 1. **`extension/`** — Ekstensi Google Chrome untuk melakukan scraping data bisnis secara otomatis dari halaman pencarian Google Maps.
 2. **`web-dashboard/`** — Aplikasi Next.js untuk menerima file *export JSON* dari ekstensi, menyimpan data ke dalam SQLite lokal, dan menampilkannya di Dashboard dengan UI modern.
 
-## 🚀 Download Cepat (Untuk Pengguna Non-Developer)
+## Download Cepat (Untuk Pengguna Non-Developer)
 
 Jika Anda hanya ingin menggunakan ekstensinya tanpa perlu melihat kodenya, silakan **[Download gmaps-leadgen-extension.zip](web-dashboard/public/gmaps-leadgen-extension.zip)**.
 
@@ -22,7 +22,7 @@ Jika Anda hanya ingin menggunakan ekstensinya tanpa perlu melihat kodenya, silak
 3. Aktifkan **Developer Mode** di pojok kanan atas.
 4. Klik **Load unpacked** dan pilih folder hasil ekstraksi.
 
-## 💻 Panduan Developer
+## Panduan Developer
 
 Jika Anda ingin menjalankan Web Dashboard atau memodifikasi kode ekstensi:
 
