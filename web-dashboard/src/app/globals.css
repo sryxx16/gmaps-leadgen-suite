@@ -3,11 +3,17 @@
 :root {
   --canvas-bg: #09090b;
   --card-bg: #121215;
+  --card-elevated: #18181b;
   --card-border: #27272a;
+  --card-border-hover: #3f3f46;
+}
+
+html {
+  color-scheme: dark;
 }
 
 body {
-  background-color: #09090b;
+  background-color: var(--canvas-bg);
   color: #f4f4f5;
   min-height: 100vh;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
@@ -19,28 +25,54 @@ body {
   width: 6px;
   height: 6px;
 }
+
 ::-webkit-scrollbar-track {
-  background: #09090b;
+  background: var(--canvas-bg);
 }
+
 ::-webkit-scrollbar-thumb {
-  background: #27272a;
+  background: var(--card-border);
   border-radius: 4px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
-  background: #3f3f46;
+  background: var(--card-border-hover);
 }
 
-/* Clean dark card & surface */
+/* Shared design tokens for cards, inputs, and buttons */
 .clean-card {
-  background-color: #121215;
-  border: 1px solid #27272a;
+  background-color: var(--card-bg);
+  border: 1px solid var(--card-border);
 }
 
-.clean-card:hover {
-  border-color: #3f3f46;
+.clean-card-interactive {
+  background-color: var(--card-bg);
+  border: 1px solid var(--card-border);
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.clean-card-interactive:hover {
+  border-color: var(--card-border-hover);
 }
 
 .clean-card-subtle {
-  background-color: #18181b;
-  border: 1px solid #27272a;
+  background-color: var(--card-elevated);
+  border: 1px solid var(--card-border);
+}
+
+.clean-input {
+  background-color: var(--card-elevated);
+  border: 1px solid var(--card-border);
+  color: #f4f4f5;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.clean-input::placeholder {
+  color: #71717a;
+}
+
+.clean-input:focus {
+  outline: none;
+  border-color: #52525b;
+  box-shadow: 0 0 0 1px rgba(161, 161, 170, 0.2);
 }
