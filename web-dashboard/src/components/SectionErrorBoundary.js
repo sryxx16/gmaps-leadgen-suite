@@ -50,3 +50,4 @@ export default class SectionErrorBoundary extends Component {
     return this.props.children;
   }
 }
+

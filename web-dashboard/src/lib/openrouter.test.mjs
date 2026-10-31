@@ -81,3 +81,4 @@ test('analyzeLeadWithOpenRouter fails fast on missing API key and surfaces 429 r
     (err) => err.code === 'RATE_LIMITED' && err.status === 429 && err.retryable === true
   );
 });
+

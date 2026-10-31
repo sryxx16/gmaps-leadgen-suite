@@ -92,3 +92,4 @@ export default function ExtensionGuideModal({ open, onClose }) {
     </div>
   );
 }
+
